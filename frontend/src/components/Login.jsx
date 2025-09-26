@@ -61,24 +61,28 @@ const Login = () => {
     setSuccess("");
 
     try {
+      // Log the request for debugging
+      console.log("Making login request to:", "/api/auth/login");
+      console.log("Request data:", { email: formData.email, password: "***" });
+
       const response = await api.post("/api/auth/login", {
         email: formData.email,
         password: formData.password,
       });
 
+      console.log("Response received:", response);
+
       let data;
       if (response.data) {
-        // If using axios-like wrapper
         data = response.data;
       } else if (response.json) {
-        // If using fetch-like wrapper
         data = await response.json();
       } else {
-        // If response is already the data
         data = response;
       }
 
-      // Check for success - adapt this based on your API response structure
+      console.log("Processed data:", data);
+
       if (response.status === 200 || response.ok || data.success) {
         // Store token and user data
         if (typeof Storage !== "undefined") {
@@ -90,30 +94,36 @@ const Login = () => {
           `Welcome back, ${data.user?.userName || data.user?.name || "User"}!`
         );
 
-        // Force both Admin and regular users to go to /models page
         setTimeout(() => {
-          // Use the navigate function from useNavigate hook
           navigate("/models");
         }, 1500);
       } else {
         setError(data.message || "Login failed. Please try again.");
       }
     } catch (error) {
-      console.error("Login error:", error);
+      console.error("Full error object:", error);
 
-      // More specific error handling
+      // More detailed error logging
       if (error.response) {
-        // Server responded with error status
+        console.error("Error response:", error.response);
+        console.error("Error status:", error.response.status);
+        console.error("Error data:", error.response.data);
+
         const errorData = error.response.data;
         setError(
-          errorData.message || "Login failed. Please check your credentials."
+          errorData.message ||
+            `Server error: ${error.response.status}. Please try again.`
         );
       } else if (error.request) {
-        // Network error
-        setError("Network error. Please check your connection and try again.");
+        console.error("Error request:", error.request);
+        setError(
+          "Network error. Cannot reach server. Please check if the backend is running."
+        );
+      } else if (error.code === "ECONNABORTED") {
+        setError("Request timeout. Please try again.");
       } else {
-        // Other error
-        setError("An unexpected error occurred. Please try again.");
+        console.error("Error message:", error.message);
+        setError(`Unexpected error: ${error.message}`);
       }
     } finally {
       setLoading(false);
