@@ -1,6 +1,5 @@
 const express = require("express");
 const cors = require("cors");
-const path = require("path");
 
 const app = express();
 
@@ -10,7 +9,7 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 app.use(
   cors({
-    origin: "https://simpson.onrender.com/",
+    origin: "https://simpson.onrender.com", // Removed trailing slash
     // origin: "http://localhost:5173",
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
@@ -34,65 +33,22 @@ app.use(
   })
 );
 
-// Add error handling for route imports
-try {
-  const login = require("./Route/LoginRoute");
-  app.use("/api/auth/", login);
-  console.log("✅ LoginRoute loaded successfully");
-} catch (error) {
-  console.error("❌ Error loading LoginRoute:", error.message);
-}
+const login = require("./Route/LoginRoute");
+app.use("/api/auth/", login);
 
-try {
-  const model = require("./Route/PartRoute");
-  app.use("/api", model);
-  console.log("✅ PartRoute loaded successfully");
-} catch (error) {
-  console.error("❌ Error loading PartRoute:", error.message);
-}
+const model = require("./Route/PartRoute");
+app.use("/api", model);
 
-try {
-  // Fixed path - changed from ../src/Route/PrintRoute to ./Route/PrintRoute
-  const printRoutes = require("./Route/PrintRoute");
-  app.use("/api", printRoutes);
-  console.log("✅ PrintRoute loaded successfully");
-} catch (error) {
-  console.error("❌ Error loading PrintRoute:", error.message);
-  console.error(
-    "Make sure the file exists at:",
-    path.resolve(__dirname, "./Route/PrintRoute.js")
-  );
-}
+const printRoutes = require("./Route/PrintRoute");
+app.use("/api", printRoutes);
 
-try {
-  const scanHistoryRoute = require("./Route/ScanHistoryRoute");
-  app.use("/api", scanHistoryRoute);
-  console.log("✅ ScanHistoryRoute loaded successfully");
-} catch (error) {
-  console.error("❌ Error loading ScanHistoryRoute:", error.message);
-}
+const scanHistoryRoute = require("./Route/ScanHistoryRoute");
+app.use("/api", scanHistoryRoute);
 
 app.get("/", (req, res) => {
   return res.status(200).send({
     message: "Simpson backend running successfully",
     status: true,
-  });
-});
-
-// Add a catch-all route for debugging 404s
-app.use("*", (req, res) => {
-  console.log(`404 - Route not found: ${req.method} ${req.originalUrl}`);
-  res.status(404).json({
-    error: "Route not found",
-    method: req.method,
-    url: req.originalUrl,
-    availableRoutes: [
-      "GET /",
-      "/api/auth/* (LoginRoute)",
-      "/api/* (PartRoute)",
-      "/api/* (PrintRoute)",
-      "/api/* (ScanHistoryRoute)",
-    ],
   });
 });
 
