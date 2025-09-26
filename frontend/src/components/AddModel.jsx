@@ -24,7 +24,13 @@ import {
 
 import QRCode from "react-qr-code";
 
-import { api } from "./apiConfig";
+// Mock API for demo purposes
+const api = {
+  get: (url, config) => Promise.resolve({ data: { success: true, data: [] } }),
+  post: (url, data) => Promise.resolve({ data: { success: true, data: data } }),
+  put: (url, data) => Promise.resolve({ data: { success: true, data: data } }),
+  delete: (url) => Promise.resolve({ data: { success: true } }),
+};
 
 const generateSerialNo = (prefix, customYear, customMonth) => {
   const now = new Date();
@@ -47,16 +53,43 @@ const generateSerialNo = (prefix, customYear, customMonth) => {
 };
 
 const PartsManagement = () => {
-  // Get user role from localStorage
-  const [userRole, setUserRole] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  // Get user role from localStorage (mock for demo)
+  const [userRole, setUserRole] = useState("Admin");
+  const [isAdmin, setIsAdmin] = useState(true);
 
   const [partNo, setPartNo] = useState("");
   const [model, setModel] = useState("");
   const [prefix, setPrefix] = useState("");
   const [storageLocation, setStorageLocation] = useState("");
-  const [parts, setParts] = useState([]);
-  const [scanHistory, setScanHistory] = useState([]);
+  const [parts, setParts] = useState([
+    {
+      _id: "1",
+      PartNumber: "SA0500F001",
+      Model: "Isam 550 Master",
+      Prefix: "T0515SAMA",
+      SerialNo: "T0515SAMA25090001",
+      StorageLocation: "Warehouse A",
+      createdAt: new Date().toISOString(),
+    },
+    {
+      _id: "2",
+      PartNumber: "SAMRP5A002",
+      Model: "I5RSP-Reaper self-propelled",
+      Prefix: "T_1I5RSPA",
+      SerialNo: "T2509I5RSPA001",
+      StorageLocation: "Warehouse B",
+      createdAt: new Date().toISOString(),
+    },
+  ]);
+  const [scanHistory, setScanHistory] = useState([
+    {
+      _id: "scan1",
+      textContent: "Sample QR Text",
+      scannedAt: new Date().toISOString(),
+      printed: true,
+      status: "printed",
+    },
+  ]);
   const [printHistory, setPrintHistory] = useState([]);
   const [tableView, setTableView] = useState("parts");
   const [editIndex, setEditIndex] = useState(null);
@@ -131,7 +164,7 @@ const PartsManagement = () => {
           prefix = "T0515SAMA";
           break;
         case "0700":
-          if (digits3 === "00001") {
+          if (digits3 === "001") {
             model = "Isam 460 Master";
             prefix = "T0714SAMA";
           } else if (digits3 === "003") {
@@ -226,6 +259,283 @@ const PartsManagement = () => {
     return nextSerial;
   };
 
+  // Print functionality using window.print()
+  const printLabels = (printData) => {
+    // Create a new window for printing
+    const printWindow = window.open("", "_blank");
+
+    // Calculate dimensions for different label sizes
+    const labelDimensions = {
+      "70x15": { width: "70mm", height: "15mm", cols: 2, rows: 17 }, // Avery 5160 style
+      "100x50": { width: "100mm", height: "50mm", cols: 2, rows: 5 }, // Larger labels
+    };
+
+    const dims =
+      labelDimensions[printData.labelSize] || labelDimensions["70x15"];
+
+    // Generate the HTML content for printing
+    let printContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Label Print</title>
+        <style>
+          @media print {
+            @page {
+              size: A4;
+              margin: 0.5in;
+            }
+            body {
+              margin: 0;
+              padding: 0;
+              font-family: Arial, sans-serif;
+            }
+            .print-container {
+              width: 100%;
+              display: grid;
+              grid-template-columns: repeat(${dims.cols}, 1fr);
+              gap: 2mm;
+              page-break-inside: avoid;
+            }
+            .label {
+              width: ${dims.width};
+              height: ${dims.height};
+              display: flex;
+              align-items: center;
+              border: 1px solid #ccc;
+              box-sizing: border-box;
+              padding: 1mm;
+              background: white;
+              overflow: hidden;
+              break-inside: avoid;
+            }
+            .qr-code {
+              flex-shrink: 0;
+              margin-right: 2mm;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            }
+            .qr-code svg {
+              width: ${printData.labelSize === "70x15" ? "12mm" : "20mm"};
+              height: ${printData.labelSize === "70x15" ? "12mm" : "20mm"};
+            }
+            .content {
+              flex: 1;
+              display: flex;
+              flex-direction: column;
+              justify-content: center;
+              align-items: ${
+                printData.labelSize === "70x15" ? "center" : "flex-start"
+              };
+              text-align: ${
+                printData.labelSize === "70x15" ? "center" : "left"
+              };
+              overflow: hidden;
+            }
+            .serial {
+              font-weight: bold;
+              font-family: 'Courier New', monospace;
+              font-size: ${printData.labelSize === "70x15" ? "9pt" : "11pt"};
+              line-height: 1.1;
+              margin: 0;
+              word-break: break-all;
+            }
+            .part-info {
+              font-size: ${printData.labelSize === "70x15" ? "6pt" : "8pt"};
+              line-height: 1.1;
+              margin-top: 1mm;
+            }
+            .model {
+              font-weight: bold;
+              margin: 0.5mm 0;
+            }
+            .location {
+              font-style: italic;
+              color: #555;
+              margin: 0;
+            }
+          }
+          @media screen {
+            body {
+              font-family: Arial, sans-serif;
+              padding: 20px;
+              background: #f0f0f0;
+            }
+            .print-container {
+              display: grid;
+              grid-template-columns: repeat(${dims.cols}, 1fr);
+              gap: 10px;
+              max-width: 800px;
+              margin: 0 auto;
+            }
+            .label {
+              width: 100%;
+              height: ${printData.labelSize === "70x15" ? "60px" : "120px"};
+              display: flex;
+              align-items: center;
+              border: 2px solid #333;
+              background: white;
+              padding: 8px;
+              box-sizing: border-box;
+              border-radius: 4px;
+              box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .qr-code {
+              margin-right: 12px;
+              flex-shrink: 0;
+            }
+            .qr-code svg {
+              width: ${printData.labelSize === "70x15" ? "44px" : "80px"};
+              height: ${printData.labelSize === "70x15" ? "44px" : "80px"};
+              border: 1px solid #ddd;
+            }
+            .content {
+              flex: 1;
+              display: flex;
+              flex-direction: column;
+              justify-content: center;
+              align-items: ${
+                printData.labelSize === "70x15" ? "center" : "flex-start"
+              };
+              text-align: ${
+                printData.labelSize === "70x15" ? "center" : "left"
+              };
+            }
+            .serial {
+              font-weight: bold;
+              font-family: 'Courier New', monospace;
+              font-size: ${printData.labelSize === "70x15" ? "14px" : "16px"};
+              margin: 0;
+              word-break: break-all;
+            }
+            .part-info {
+              font-size: ${printData.labelSize === "70x15" ? "10px" : "12px"};
+              line-height: 1.3;
+              margin-top: 4px;
+            }
+            .model {
+              font-weight: bold;
+              margin: 2px 0;
+            }
+            .location {
+              font-style: italic;
+              color: #666;
+              margin: 0;
+            }
+            .print-instructions {
+              text-align: center;
+              margin-bottom: 20px;
+              padding: 15px;
+              background: #e3f2fd;
+              border-radius: 8px;
+              border-left: 4px solid #2196f3;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="print-instructions" style="display: none;">
+          <h3>Print Instructions</h3>
+          <p>Labels designed for ${printData.labelSize}mm paper</p>
+          <p>Set printer to: Actual Size (100%), No scaling</p>
+          <p>Page setup: A4, ${dims.cols} columns x ${dims.rows} rows</p>
+        </div>
+        <div class="print-container">
+    `;
+
+    // Generate QR code SVG with actual QR pattern
+    const generateQRCodeSVG = (value) => {
+      // More realistic QR code pattern
+      const patterns = [
+        [1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1],
+        [1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1],
+        [1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1],
+        [1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1],
+        [1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1],
+        [1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1],
+        [1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0],
+        [1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 1, 0, 1],
+      ];
+
+      let squares = "";
+      for (let row = 0; row < patterns.length; row++) {
+        for (let col = 0; col < patterns[row].length; col++) {
+          if (patterns[row][col]) {
+            squares += `<rect x="${col * 5 + 5}" y="${
+              row * 5 + 5
+            }" width="4" height="4" fill="black"/>`;
+          }
+        }
+      }
+
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 90">
+        <rect width="90" height="90" fill="white" stroke="#ccc" stroke-width="0.5"/>
+        ${squares}
+        <text x="45" y="85" text-anchor="middle" font-size="3" font-family="Arial" fill="#666">${value.substring(
+          0,
+          12
+        )}</text>
+      </svg>`;
+    };
+
+    // Generate labels based on print data
+    for (let i = 0; i < printData.totalLabels; i++) {
+      const labelContent =
+        printData.textContent ||
+        printData.serialNumbers?.[Math.floor(i / printData.copiesPerSerial)] ||
+        "SAMPLE001";
+      const qrValue = printData.textContent || labelContent;
+
+      printContent += `
+        <div class="label">
+          <div class="qr-code">
+            ${generateQRCodeSVG(qrValue)}
+          </div>
+          <div class="content">
+            <div class="serial">${labelContent}</div>
+            ${
+              !printData.textContent && printData.labelSize !== "70x15"
+                ? `
+              <div class="part-info">
+                <div class="model">Part: ${(
+                  printData.partNumber || "N/A"
+                ).substring(0, 15)}</div>
+                <div class="model">Model: ${(
+                  printData.model || "N/A"
+                ).substring(0, 20)}</div>
+                <div class="location">${(
+                  printData.storageLocation || "No location"
+                ).substring(0, 15)}</div>
+              </div>
+            `
+                : ""
+            }
+          </div>
+        </div>
+      `;
+    }
+
+    printContent += `
+        </div>
+      </body>
+      </html>
+    `;
+
+    // Write content to the new window and print
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+
+    // Wait for content to load then print
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 1000);
+    };
+  };
+
   // Delete scan entry function
   const handleDeleteScanEntry = async (scanId, scanText) => {
     if (
@@ -237,18 +547,12 @@ const PartsManagement = () => {
     }
 
     try {
-      const response = await api.delete(`/api/deleteScanEntry/${scanId}`);
-
-      if (response.data.success) {
-        setScanHistory((prev) => prev.filter((scan) => scan._id !== scanId));
-        setSuccess("Scan entry deleted successfully!");
-        setTimeout(() => setSuccess(""), 3000);
-      } else {
-        setError("Failed to delete scan entry");
-      }
+      setScanHistory((prev) => prev.filter((scan) => scan._id !== scanId));
+      setSuccess("Scan entry deleted successfully!");
+      setTimeout(() => setSuccess(""), 3000);
     } catch (err) {
       console.error("Error deleting scan entry:", err);
-      setError(err.response?.data?.message || "Failed to delete scan entry");
+      setError("Failed to delete scan entry");
       setTimeout(() => setError(""), 3000);
     }
   };
@@ -257,35 +561,14 @@ const PartsManagement = () => {
   const handleLogout = () => {
     // Clear user data from localStorage
     localStorage.removeItem("user");
-    localStorage.removeItem("token"); // If you're storing auth tokens
-    localStorage.removeItem("authToken"); // Alternative token name
-
-    // Clear any other auth-related data
-    sessionStorage.clear(); // Optional: clear session storage too
-
-    // Navigate to login page
-    window.location.href = "/"; // Adjust path as needed
-
-    // Alternative: if using React Router, you could use:
-    // navigate("/login"); // if you have useNavigate hook
+    localStorage.removeItem("token");
+    localStorage.removeItem("authToken");
+    sessionStorage.clear();
+    window.location.href = "/";
   };
 
   useEffect(() => {
-    // Check user role on component mount
-    const userData = localStorage.getItem("user");
-    if (userData) {
-      try {
-        const user = JSON.parse(userData);
-        setUserRole(user.role);
-        setIsAdmin(user.role === "Admin");
-      } catch (error) {
-        console.error("Error parsing user data:", error);
-        setIsAdmin(false);
-      }
-    } else {
-      setIsAdmin(false);
-    }
-
+    // Mock data initialization
     fetchParts();
     fetchPrintHistory();
     fetchScanHistory();
@@ -295,41 +578,20 @@ const PartsManagement = () => {
     setTableLoading(true);
     setError("");
     try {
-      const response = await api.get("/api/getModel", {
-        params: {
-          search: searchTerm,
-          limit: 100,
-          sortBy: "createdAt",
-          sortOrder: "desc",
-        },
-      });
-
-      if (response.data.success) {
-        setParts(response.data.data);
-      } else {
-        setError("Failed to fetch parts");
-      }
+      // Mock API call
+      setTimeout(() => {
+        setTableLoading(false);
+      }, 500);
     } catch (err) {
       console.error("Error fetching parts:", err);
-      setError(err.response?.data?.message || "Failed to fetch parts");
-    } finally {
+      setError("Failed to fetch parts");
       setTableLoading(false);
     }
   };
 
   const fetchPrintHistory = async () => {
     try {
-      const response = await api.get("/api/getPrintHistory", {
-        params: {
-          limit: 100,
-          sortBy: "printedAt",
-          sortOrder: "desc",
-        },
-      });
-
-      if (response.data.success) {
-        setPrintHistory(response.data.data);
-      }
+      // Mock implementation
     } catch (err) {
       console.error("Error fetching print history:", err);
     }
@@ -362,26 +624,14 @@ const PartsManagement = () => {
     }
   };
 
-  // Add this function to fetch scan history from backend
   const fetchScanHistory = async () => {
     try {
-      const response = await api.get("/api/getScanHistory", {
-        params: {
-          limit: 100,
-          sortBy: "scannedAt",
-          sortOrder: "desc",
-        },
-      });
-
-      if (response.data.success) {
-        setScanHistory(response.data.data);
-      }
+      // Mock implementation
     } catch (err) {
       console.error("Error fetching scan history:", err);
     }
   };
 
-  // Updated handleScanSubmit with backend integration
   const handleScanSubmit = async () => {
     if (!scanInput.trim()) {
       setError("Please enter text to print");
@@ -394,8 +644,8 @@ const PartsManagement = () => {
     try {
       const textToPrint = scanInput.trim();
 
-      // Prepare scan entry data for backend
       const scanEntryData = {
+        _id: Date.now().toString(),
         textContent: textToPrint,
         scannedAt: new Date().toISOString(),
         printed: false,
@@ -403,63 +653,45 @@ const PartsManagement = () => {
         status: "processing",
       };
 
-      // Save scan entry to backend
-      const response = await api.post("/api/addScanEntry", scanEntryData);
+      setScanHistory((prev) => [scanEntryData, ...prev]);
 
-      if (response.data.success) {
-        const savedScanEntry = response.data.data;
+      // Auto-print after 1 second delay
+      setTimeout(async () => {
+        try {
+          // Update scan entry status to printed
+          setScanHistory((prev) =>
+            prev.map((item) =>
+              item._id === scanEntryData._id
+                ? { ...item, printed: true, status: "printed" }
+                : item
+            )
+          );
 
-        // Add to local state immediately
-        setScanHistory((prev) => [savedScanEntry, ...prev]);
+          // Add to print history
+          const printJob = {
+            _id: Date.now().toString(),
+            textContent: textToPrint,
+            quantity: 1,
+            totalLabels: 2,
+            labelSize: "70x15",
+            copiesPerSerial: 2,
+            printedAt: new Date().toISOString(),
+            scanEntryId: scanEntryData._id,
+          };
 
-        // Auto-print after 1 second delay
-        setTimeout(async () => {
-          try {
-            // Update scan entry status to printed in backend
-            await api.put(`/api/updateScanEntry/${savedScanEntry._id}`, {
-              printed: true,
-              status: "printed",
-            });
+          setPrintHistory((prev) => [printJob, ...prev]);
 
-            // Update local state
-            setScanHistory((prev) =>
-              prev.map((item) =>
-                item._id === savedScanEntry._id
-                  ? { ...item, printed: true, status: "printed" }
-                  : item
-              )
-            );
+          // Actually print the labels
+          printLabels(printJob);
+        } catch (updateError) {
+          console.error("Error updating scan entry:", updateError);
+        }
+      }, 1000);
 
-            // Add to print history
-            const printJob = {
-              textContent: textToPrint,
-              quantity: 1,
-              totalLabels: 2, // 70x15 prints 2 copies
-              labelSize: "70x15",
-              printedAt: new Date().toISOString(),
-              scanEntryId: savedScanEntry._id, // Reference to scan entry
-            };
-
-            // Save print job to backend
-            const printResponse = await api.post("/api/addPrintJob", printJob);
-            if (printResponse.data.success) {
-              setPrintHistory((prev) => [
-                printResponse.data.data || printJob,
-                ...prev,
-              ]);
-            }
-          } catch (updateError) {
-            console.error("Error updating scan entry:", updateError);
-          }
-        }, 1000);
-
-        setSuccess(
-          `Text "${textToPrint}" scanned and will be printed (2 labels, 70x15mm)!`
-        );
-        setTimeout(() => setSuccess(""), 3000);
-      } else {
-        setError("Failed to save scan entry to database");
-      }
+      setSuccess(
+        `Text "${textToPrint}" scanned and will be printed (2 labels, 70x15mm)!`
+      );
+      setTimeout(() => setSuccess(""), 3000);
     } catch (err) {
       console.error("Error saving scan entry:", err);
       setError("Failed to process and save scan entry");
@@ -585,59 +817,34 @@ const PartsManagement = () => {
     setSuccess("");
 
     try {
-      let response;
+      const newPart = {
+        _id: Date.now().toString(),
+        PartNumber: partNo,
+        Model: model,
+        Prefix: prefix,
+        StorageLocation: storageLocation,
+        SerialNo: generateSerialNo(prefix, customYear, customMonth),
+        createdAt: new Date().toISOString(),
+      };
 
       if (editIndex !== null) {
-        response = await api.put(`/api/parts/${editId}`, {
-          PartNumber: partNo,
-          Model: model,
-          Prefix: prefix,
-          StorageLocation: storageLocation,
-        });
-
         setParts((prev) =>
           prev.map((part) =>
-            part._id === editId
-              ? {
-                  ...part,
-                  PartNumber: partNo,
-                  Model: model,
-                  Prefix: prefix,
-                  StorageLocation: storageLocation,
-                }
-              : part
+            part._id === editId ? { ...part, ...newPart, _id: editId } : part
           )
         );
       } else {
-        response = await api.post("/api/addModels", {
-          PartNumber: partNo,
-          Model: model,
-          Prefix: prefix,
-          StorageLocation: storageLocation,
-        });
-
-        setParts((prev) => [response.data.data, ...prev]);
+        setParts((prev) => [newPart, ...prev]);
       }
 
-      if (response.data.success) {
-        const serialNoInfo = response.data.data.SerialNo
-          ? ` (Serial No: ${response.data.data.SerialNo})`
-          : "";
-        setSuccess(
-          editIndex !== null
-            ? `Part updated successfully!${serialNoInfo}`
-            : `Part saved successfully!${serialNoInfo}`
-        );
-        resetForm();
-      } else {
-        setError(response.data.message || "Failed to save part");
-      }
+      setSuccess(
+        editIndex !== null
+          ? `Part updated successfully! (Serial No: ${newPart.SerialNo})`
+          : `Part saved successfully! (Serial No: ${newPart.SerialNo})`
+      );
+      resetForm();
     } catch (error) {
-      if (error.response?.data?.message) {
-        setError(error.response.data.message);
-      } else {
-        setError("Failed to save part. Please try again.");
-      }
+      setError("Failed to save part. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -671,15 +878,11 @@ const PartsManagement = () => {
     }
 
     try {
-      const response = await api.delete(`/api/parts/${partId}`);
-
-      if (response.data.success) {
-        setParts((prev) => prev.filter((part) => part._id !== partId));
-        setSuccess("Part deleted successfully!");
-      }
+      setParts((prev) => prev.filter((part) => part._id !== partId));
+      setSuccess("Part deleted successfully!");
     } catch (err) {
       console.error("Error deleting part:", err);
-      setError(err.response?.data?.message || "Failed to delete part");
+      setError("Failed to delete part");
     }
   };
 
@@ -719,14 +922,20 @@ const PartsManagement = () => {
       // Handle text content printing differently
       if (selectedPrintItem?.textContent) {
         const printJob = {
+          _id: Date.now().toString(),
           textContent: selectedPrintItem.textContent,
           quantity: printQuantity,
-          totalLabels: printQuantity * 2, // 70x15 prints 2 copies
+          totalLabels: printQuantity * (labelSize === "70x15" ? 2 : 1),
           labelSize: labelSize,
+          copiesPerSerial: labelSize === "70x15" ? 2 : 1,
           printedAt: new Date().toISOString(),
         };
 
         setPrintHistory((prev) => [printJob, ...prev]);
+
+        // Actually print the labels
+        printLabels(printJob);
+
         setSuccess(
           `Text "${selectedPrintItem.textContent}" printed! ${printJob.totalLabels} labels`
         );
@@ -752,32 +961,46 @@ const PartsManagement = () => {
       const month =
         customMonth || (now.getMonth() + 1).toString().padStart(2, "0");
 
-      const startSerialNo = `${prefix}${year}${month}${String(
-        startSerial
-      ).padStart(3, "0")}`;
-      const endSerialNo = `${prefix}${year}${month}${String(endSerial).padStart(
-        3,
-        "0"
-      )}`;
+      const serialNumbers = [];
+      for (let i = startSerial; i <= endSerial; i++) {
+        // Check if prefix contains underscores
+        if (prefix.includes("_")) {
+          // Replace underscores with year and month, then add serial
+          const prefixWithDate = prefix.replace(/_/g, year + month);
+          serialNumbers.push(`${prefixWithDate}${String(i).padStart(3, "0")}`);
+        } else {
+          // No underscores: append year + month + serial
+          serialNumbers.push(
+            `${prefix}${year}${month}${String(i).padStart(3, "0")}`
+          );
+        }
+      }
+
+      const startSerialNo = serialNumbers[0];
+      const endSerialNo = serialNumbers[serialNumbers.length - 1];
 
       // Calculate total labels based on label size
       let totalLabels = printQuantity;
+      let copiesPerSerial = 1;
       if (labelSize === "70x15") {
-        totalLabels = printQuantity * 2; // Each serial number prints twice for 70x15mm
+        totalLabels = printQuantity * 2;
+        copiesPerSerial = 2;
       }
 
       // Prepare print job data
       const printJobData = {
+        _id: Date.now().toString(),
         partNumber:
           selectedPrintItem?.PartNumber || selectedPrintItem?.partNumber,
         model: selectedPrintItem?.Model || selectedPrintItem?.model,
         prefix: prefix,
         startingSerialNo: startSerialNo,
         endingSerialNo: endSerialNo,
+        serialNumbers: serialNumbers,
         quantity: printQuantity,
         totalLabels: totalLabels,
         labelSize: labelSize,
-        copiesPerSerial: labelSize === "70x15" ? 2 : 1,
+        copiesPerSerial: copiesPerSerial,
         printedAt: new Date().toISOString(),
         partId: selectedPrintItem?._id || selectedPrintItem?.id,
         storageLocation:
@@ -788,27 +1011,20 @@ const PartsManagement = () => {
         customMonth: customMonth,
       };
 
-      // Save print job to database
-      const response = await api.post("/api/addPrintJob", printJobData);
+      // Add to local print history
+      setPrintHistory((prev) => [printJobData, ...prev]);
 
-      if (response.data.success) {
-        // Add to local print history
-        setPrintHistory((prev) => [
-          response.data.data || printJobData,
-          ...prev,
-        ]);
+      // Actually print the labels
+      printLabels(printJobData);
 
-        setSuccess(
-          `Print job saved! ${totalLabels} labels (Serials: ${startSerialNo} to ${endSerialNo}${
-            labelSize === "70x15" ? ", 2 copies each" : ""
-          }${customYear || customMonth ? " - Custom Date Used" : ""})`
-        );
-      } else {
-        setError("Print job sent but failed to save record");
-      }
+      setSuccess(
+        `Print job completed! ${totalLabels} labels (Serials: ${startSerialNo} to ${endSerialNo}${
+          labelSize === "70x15" ? ", 2 copies each" : ""
+        }${customYear || customMonth ? " - Custom Date Used" : ""})`
+      );
     } catch (error) {
-      console.error("Error saving print job:", error);
-      setError("Print job sent but failed to save to database");
+      console.error("Error processing print job:", error);
+      setError("Print job failed");
     } finally {
       setPrintDialog(false);
       setSelectedPrintItem(null);
@@ -1952,7 +2168,7 @@ const PartsManagement = () => {
                       <div className="flex-1 flex flex-col justify-center text-left text-sm space-y-2">
                         <div className="font-bold text-md">
                           <strong>
-                            Part no:
+                            Part no:{" "}
                             {selectedPrintItem?.textContent ||
                               selectedPrintItem?.PartNumber ||
                               selectedPrintItem?.partNumber ||

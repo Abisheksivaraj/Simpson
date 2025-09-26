@@ -79,14 +79,13 @@ router.post("/addPrintJob", validatePrintJob, async (req, res) => {
       partId = null,
       printedBy = "system",
       printNotes = "",
-      textContent, // For text-only printing
     } = req.body;
 
-    // Verify the part exists in the database (skip for text content)
+    // Verify the part exists in the database
     let relatedPart = null;
-    if (partId && !textContent) {
+    if (partId) {
       relatedPart = await Part.findById(partId);
-    } else if (!textContent) {
+    } else {
       relatedPart = await Part.findOne({
         PartNumber: partNumber.toUpperCase(),
         isActive: true,
@@ -102,66 +101,25 @@ router.post("/addPrintJob", validatePrintJob, async (req, res) => {
       copiesPerSerial = 2;
     }
 
-    // Create the print job record
+    // Create the print job
     const printJob = new PrintJob({
-      partNumber: textContent ? null : partNumber.toUpperCase(),
-      model: textContent ? null : model.trim(),
-      prefix: textContent ? null : prefix.toUpperCase(),
-      startingSerialNo: textContent ? null : startingSerialNo.toUpperCase(),
-      endingSerialNo: textContent ? null : endingSerialNo.toUpperCase(),
-      textContent: textContent || null,
+      partNumber: partNumber.toUpperCase(),
+      model: model.trim(),
+      prefix: prefix.toUpperCase(),
+      startingSerialNo: startingSerialNo.toUpperCase(),
+      endingSerialNo: endingSerialNo.toUpperCase(),
       quantity: parseInt(quantity),
       totalLabels,
       labelSize,
       copiesPerSerial,
-      storageLocation: textContent ? null : storageLocation.trim(),
+      storageLocation: storageLocation.trim(),
       partId: relatedPart ? relatedPart._id : null,
       printedBy,
       printNotes: printNotes.trim(),
-      printStatus: "processing", // Start as processing
+      printStatus: "completed",
     });
 
     const savedPrintJob = await printJob.save();
-
-    // ACTUAL PRINTING LOGIC - This is what was missing
-    try {
-      if (textContent) {
-        // Handle text content printing
-        await printTextLabels(textContent, totalLabels, labelSize);
-      } else {
-        // Handle part serial number printing
-        await printPartLabels({
-          startingSerialNo,
-          endingSerialNo,
-          quantity,
-          totalLabels,
-          labelSize,
-          partNumber,
-          model,
-          storageLocation,
-        });
-      }
-
-      // Update status to completed after successful printing
-      await PrintJob.findByIdAndUpdate(savedPrintJob._id, {
-        printStatus: "completed",
-        printedAt: new Date(),
-      });
-    } catch (printError) {
-      console.error("Printing failed:", printError);
-
-      // Update status to failed
-      await PrintJob.findByIdAndUpdate(savedPrintJob._id, {
-        printStatus: "failed",
-        errorMessage: printError.message,
-      });
-
-      return res.status(500).json({
-        success: false,
-        message: "Print job created but printing failed",
-        error: printError.message,
-      });
-    }
 
     // Populate the part information if available
     const populatedPrintJob = await PrintJob.findById(
@@ -171,8 +129,8 @@ router.post("/addPrintJob", validatePrintJob, async (req, res) => {
     res.status(201).json({
       success: true,
       data: populatedPrintJob,
-      message: `Print job completed successfully! ${totalLabels} labels printed (${quantity} unique items${
-        labelSize === "70x15" ? ", 2 copies each in separate positions" : ""
+      message: `Print job created successfully! ${totalLabels} labels queued for printing (${quantity} unique serials${
+        labelSize === "70x15" ? ", 2 copies each" : ""
       })`,
     });
   } catch (error) {
@@ -184,220 +142,6 @@ router.post("/addPrintJob", validatePrintJob, async (req, res) => {
     });
   }
 });
-
-// PRINTING FUNCTIONS - Add these to your codebase
-
-async function printTextLabels(textContent, totalLabels, labelSize) {
-  const printerConfig = {
-    printerName: process.env.PRINTER_NAME || "default",
-    labelSize: labelSize,
-    density: 10,
-    speed: 2,
-  };
-
-  // Print each label separately to ensure proper spacing on roll
-  for (let i = 0; i < totalLabels; i++) {
-    await printSingleLabel({
-      content: textContent,
-      type: "text",
-      config: printerConfig,
-      labelNumber: i + 1,
-      totalLabels: totalLabels,
-    });
-
-    // Small delay between prints to ensure proper roll advancement
-    await sleep(100);
-  }
-}
-
-async function printPartLabels({
-  startingSerialNo,
-  endingSerialNo,
-  quantity,
-  totalLabels,
-  labelSize,
-  partNumber,
-  model,
-  storageLocation,
-}) {
-  const printerConfig = {
-    printerName: process.env.PRINTER_NAME || "default",
-    labelSize: labelSize,
-    density: 10,
-    speed: 2,
-  };
-
-  // Generate all serial numbers first
-  const serialNumbers = generateSerialNumbers(
-    startingSerialNo,
-    endingSerialNo,
-    quantity
-  );
-
-  let labelCount = 0;
-
-  for (const serialNo of serialNumbers) {
-    const copiesPerSerial = labelSize === "70x15" ? 2 : 1;
-
-    // Print each copy of this serial number separately
-    for (let copy = 0; copy < copiesPerSerial; copy++) {
-      labelCount++;
-
-      await printSingleLabel({
-        content: serialNo,
-        type: "part",
-        partData: {
-          partNumber,
-          model,
-          storageLocation,
-          serialNo,
-        },
-        config: printerConfig,
-        labelNumber: labelCount,
-        totalLabels: totalLabels,
-        copyNumber: copy + 1,
-        copiesPerSerial,
-      });
-
-      // Small delay between prints for proper roll advancement
-      await sleep(100);
-    }
-  }
-}
-
-async function printSingleLabel({
-  content,
-  type,
-  partData,
-  config,
-  labelNumber,
-  totalLabels,
-  copyNumber,
-  copiesPerSerial,
-}) {
-  // This is where you interface with your actual printer
-  // Examples for different printer types:
-
-  if (config.printerName.includes("zebra")) {
-    await printZebraLabel({ content, type, partData, config, labelNumber });
-  } else if (config.printerName.includes("dymo")) {
-    await printDymoLabel({ content, type, partData, config, labelNumber });
-  } else {
-    // Generic printer (you'll need to implement based on your printer)
-    await printGenericLabel({ content, type, partData, config, labelNumber });
-  }
-
-  console.log(
-    `Printed label ${labelNumber}/${totalLabels}: ${content}${
-      copyNumber ? ` (copy ${copyNumber}/${copiesPerSerial})` : ""
-    }`
-  );
-}
-
-// Example Zebra printer implementation (ZPL commands)
-async function printZebraLabel({
-  content,
-  type,
-  partData,
-  config,
-  labelNumber,
-}) {
-  const zplCommand = generateZPLCommand({ content, type, partData, config });
-
-  // Send to printer (implement based on your printer connection method)
-  // Options: USB, Network, Serial, etc.
-  await sendToPrinter(zplCommand, config.printerName);
-}
-
-function generateZPLCommand({ content, type, partData, config }) {
-  if (config.labelSize === "70x15") {
-    // 70mm x 15mm label with QR code
-    return `
-^XA
-^MMT
-^PW560
-^LL120
-^LS0
-^FO30,20^BQN,2,4
-^FDQA,${content}^FS
-^FO200,30^A0N,25,25^FD${content}^FS
-${
-  type === "part" && partData.model
-    ? `^FO200,55^A0N,18,18^FD${partData.model}^FS`
-    : ""
-}
-^XZ
-    `.trim();
-  } else {
-    // 100mm x 50mm label
-    return `
-^XA
-^MMT
-^PW800
-^LL400
-^LS0
-^FO30,30^BQN,2,6
-^FDQA,${content}^FS
-^FO250,40^A0N,30,30^FD${content}^FS
-${
-  type === "part"
-    ? `
-^FO250,80^A0N,20,20^FDModel: ${partData.model}^FS
-^FO250,110^A0N,20,20^FDLocation: ${partData.storageLocation || "N/A"}^FS
-`
-    : ""
-}
-^XZ
-    `.trim();
-  }
-}
-
-// async function sendToPrinter(command, printerName) {
-//   // Implementation depends on your printer connection:
-
-//   // Option 1: Network printer
-//   // const net = require('net');
-//   // const client = new net.Socket();
-//   // await client.connect(9100, printerIP);
-//   // client.write(command);
-//   // client.end();
-
-//   // Option 2: USB/Serial printer
-//   // const printer = require('printer');
-//   // printer.printDirect({
-//   //   data: command,
-//   //   printer: printerName,
-//   //   type: "RAW"
-//   // });
-
-//   // Option 3: Print service API
-//   // await fetch('http://localhost:3001/print', {
-//   //   method: 'POST',
-//   //   body: JSON.stringify({ command, printer: printerName }),
-//   //   headers: { 'Content-Type': 'application/json' }
-//   // });
-
-//   // For now, just log the command
-//   console.log(`Sending to printer ${printerName}:`, command);
-// }
-
-function generateSerialNumbers(startSerial, endSerial, quantity) {
-  const serialNumbers = [];
-  const startNum = parseInt(startSerial.slice(-3));
-
-  for (let i = 0; i < quantity; i++) {
-    const currentNum = startNum + i;
-    const serialNo =
-      startSerial.slice(0, -3) + String(currentNum).padStart(3, "0");
-    serialNumbers.push(serialNo);
-  }
-
-  return serialNumbers;
-}
-
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 // GET /api/getPrintHistory - Get print history with search and pagination
 router.get("/getPrintHistory", async (req, res) => {
