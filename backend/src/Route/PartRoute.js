@@ -14,11 +14,21 @@ route.use((req, res, next) => {
 // Function to generate SerialNo based on Prefix + Current Year + Current Month + Random
 const generateSerialNo = (prefix) => {
   const now = new Date();
-  const year = now.getFullYear().toString().slice(-2); // Last 2 digits of year
-  const month = (now.getMonth() + 1).toString().padStart(2, '0'); // Month with leading zero
-  const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0'); // Random 3-digit number
-  
-  return `${prefix}${year}${month}${randomNum}`;
+  const year = now.getFullYear().toString().slice(-2);
+  const month = (now.getMonth() + 1).toString().padStart(2, "0");
+  const serial = Math.floor(Math.random() * 1000)
+    .toString()
+    .padStart(3, "0");
+
+  // Check if prefix contains underscores
+  if (prefix.includes("_")) {
+    // Replace underscores with year and month, then add serial
+    const prefixWithDate = prefix.replace(/_/g, year + month);
+    return `${prefixWithDate}${serial}`;
+  } else {
+    // No underscores: append year + month + serial (current behavior)
+    return `${prefix}${year}${month}${serial}`;
+  }
 };
 
 // Enhanced POST route with StorageLocation support

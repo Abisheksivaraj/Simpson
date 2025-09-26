@@ -42,6 +42,9 @@ app.use("/api", model);
 const printRoutes = require("../src/Route/PrintRoute");
 app.use("/api", printRoutes);
 
+const scanHistoryRoute = require("./Route/ScanHistoryRoute");
+app.use("/api", scanHistoryRoute);
+
 app.get("/", (req, res) => {
   return res.status(200).send({
     message: "ABB Project backend running successfully",

@@ -2,7 +2,7 @@
 const express = require("express");
 const router = express.Router();
 const PrintJob = require("../Models/PrintModel");
-const Part = require("../models/PartModel");
+const Part = require("../Models/PrintModel");
 
 // Validation middleware for print jobs
 const validatePrintJob = (req, res, next) => {

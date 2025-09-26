@@ -8,7 +8,16 @@ const generateSerialNo = (prefix) => {
   const serial = Math.floor(Math.random() * 1000)
     .toString()
     .padStart(3, "0");
-  return `${prefix}${year}${month}${serial}`;
+
+  // Check if prefix contains underscores
+  if (prefix.includes("_")) {
+    // Replace underscores with year and month, then add serial
+    const prefixWithDate = prefix.replace(/_/g, year + month);
+    return `${prefixWithDate}${serial}`;
+  } else {
+    // No underscores: append year + month + serial (current behavior)
+    return `${prefix}${year}${month}${serial}`;
+  }
 };
 
 const partSchema = new mongoose.Schema(
@@ -62,7 +71,6 @@ partSchema.index({ PartNumber: 1, Model: 1 });
 partSchema.index({ Prefix: 1, SerialNo: 1 });
 partSchema.index({ StorageLocation: 1, createdAt: -1 });
 
-// Pre-save middleware
 partSchema.pre("save", function (next) {
   // Convert PartNumber to uppercase
   if (this.PartNumber) {
@@ -79,9 +87,13 @@ partSchema.pre("save", function (next) {
     this.SerialNo = generateSerialNo(this.Prefix);
   }
 
-  // Trim StorageLocation if provided
-  if (this.StorageLocation !== undefined) {
+  // Trim StorageLocation if it's a string
+  if (typeof this.StorageLocation === "string") {
     this.StorageLocation = this.StorageLocation.trim();
+    // Set to null if empty string after trimming
+    if (this.StorageLocation === "") {
+      this.StorageLocation = null;
+    }
   }
 
   next();

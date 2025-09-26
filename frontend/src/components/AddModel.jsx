@@ -19,20 +19,31 @@ import {
   Eye,
   QrCode,
   LogOut,
+  Calendar,
 } from "lucide-react";
 
 import QRCode from "react-qr-code";
 
 import { api } from "./apiConfig";
 
-const generateSerialNo = (prefix) => {
+const generateSerialNo = (prefix, customYear, customMonth) => {
   const now = new Date();
-  const year = now.getFullYear().toString().slice(-2);
-  const month = (now.getMonth() + 1).toString().padStart(2, "0");
+  // Use custom year/month if provided, otherwise use current date
+  const year = customYear || now.getFullYear().toString().slice(-2);
+  const month = customMonth || (now.getMonth() + 1).toString().padStart(2, "0");
   const serial = Math.floor(Math.random() * 1000)
     .toString()
     .padStart(3, "0");
-  return `${prefix}${year}${month}${serial}`;
+
+  // Check if prefix contains underscores
+  if (prefix.includes("_")) {
+    // Replace underscores with year and month, then add serial
+    const prefixWithDate = prefix.replace(/_/g, year + month);
+    return `${prefixWithDate}${serial}`;
+  } else {
+    // No underscores: append year + month + serial (current behavior)
+    return `${prefix}${year}${month}${serial}`;
+  }
 };
 
 const PartsManagement = () => {
@@ -64,7 +75,7 @@ const PartsManagement = () => {
   // Print dialog states
   const [printDialog, setPrintDialog] = useState(false);
   const [printQuantity, setPrintQuantity] = useState(1);
-  const [serialStartFrom, setSerialStartFrom] = useState("001");
+  const [serialStartFrom, setSerialStartFrom] = useState("00001");
   const [labelSize, setLabelSize] = useState("70x15");
   const [selectedPrintItem, setSelectedPrintItem] = useState(null);
   const [isManualSerialEntry, setIsManualSerialEntry] = useState(false);
@@ -72,6 +83,11 @@ const PartsManagement = () => {
   // QR Code dialog states
   const [qrDialog, setQrDialog] = useState(false);
   const [selectedQrItem, setSelectedQrItem] = useState(null);
+
+  // Year/Month override states
+  const [customYear, setCustomYear] = useState("");
+  const [customMonth, setCustomMonth] = useState("");
+  const [showYearMonthOverride, setShowYearMonthOverride] = useState(false);
 
   // Predefined part number mappings
   const partNumberMappings = {
@@ -81,6 +97,14 @@ const PartsManagement = () => {
     SA0400F001: { model: "Isam 800 Pro", prefix: "T0418SAMA" },
     SA0700F004: { model: "Isam 550 Master (SCRG)", prefix: "T0515SAMB" },
     SA0700F003: { model: "Isam 450 Master (SCRG)", prefix: "T0714SAMB" },
+    // ADD NEW PART:
+    SAMRP5A002: { model: "I5RSP-Reaper self-propelled", prefix: "T_1I5RSPA" },
+  };
+
+  // Check if it's December or if user wants to override year/month
+  const checkDecemberOverride = () => {
+    const currentMonth = new Date().getMonth() + 1; // 1-based month
+    return currentMonth === 12 || showYearMonthOverride;
   };
 
   const getModelAndPrefixByPattern = (partNumber) => {
@@ -107,7 +131,7 @@ const PartsManagement = () => {
           prefix = "T0515SAMA";
           break;
         case "0700":
-          if (digits3 === "001") {
+          if (digits3 === "00001") {
             model = "Isam 460 Master";
             prefix = "T0714SAMA";
           } else if (digits3 === "003") {
@@ -152,7 +176,7 @@ const PartsManagement = () => {
   // Function to find the next serial number based on print history
   const getNextSerialNumber = (prefix) => {
     if (!prefix || printHistory.length === 0) {
-      return "001";
+      return "00001";
     }
 
     // Find all print history entries with the same prefix
@@ -161,13 +185,14 @@ const PartsManagement = () => {
     );
 
     if (samePrefixPrints.length === 0) {
-      return "001";
+      return "00001";
     }
 
-    // Get the current year and month for comparison
+    // Get the current or custom year and month for comparison
     const now = new Date();
-    const currentYear = now.getFullYear().toString().slice(-2);
-    const currentMonth = (now.getMonth() + 1).toString().padStart(2, "0");
+    const currentYear = customYear || now.getFullYear().toString().slice(-2);
+    const currentMonth =
+      customMonth || (now.getMonth() + 1).toString().padStart(2, "0");
     const currentYearMonth = currentYear + currentMonth;
 
     // Find the highest ending serial number for the current month/year
@@ -199,6 +224,33 @@ const PartsManagement = () => {
     // Return the next serial number
     const nextSerial = (highestSerial + 1).toString().padStart(3, "0");
     return nextSerial;
+  };
+
+  // Delete scan entry function
+  const handleDeleteScanEntry = async (scanId, scanText) => {
+    if (
+      !window.confirm(
+        `Are you sure you want to delete scan entry "${scanText}"?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const response = await api.delete(`/deleteScanEntry/${scanId}`);
+
+      if (response.data.success) {
+        setScanHistory((prev) => prev.filter((scan) => scan._id !== scanId));
+        setSuccess("Scan entry deleted successfully!");
+        setTimeout(() => setSuccess(""), 3000);
+      } else {
+        setError("Failed to delete scan entry");
+      }
+    } catch (err) {
+      console.error("Error deleting scan entry:", err);
+      setError(err.response?.data?.message || "Failed to delete scan entry");
+      setTimeout(() => setError(""), 3000);
+    }
   };
 
   // Logout function
@@ -236,6 +288,7 @@ const PartsManagement = () => {
 
     fetchParts();
     fetchPrintHistory();
+    fetchScanHistory();
   }, []);
 
   const fetchParts = async () => {
@@ -309,9 +362,29 @@ const PartsManagement = () => {
     }
   };
 
+  // Add this function to fetch scan history from backend
+  const fetchScanHistory = async () => {
+    try {
+      const response = await api.get("/getScanHistory", {
+        params: {
+          limit: 100,
+          sortBy: "scannedAt",
+          sortOrder: "desc",
+        },
+      });
+
+      if (response.data.success) {
+        setScanHistory(response.data.data);
+      }
+    } catch (err) {
+      console.error("Error fetching scan history:", err);
+    }
+  };
+
+  // Updated handleScanSubmit with backend integration
   const handleScanSubmit = async () => {
     if (!scanInput.trim()) {
-      setError("Please enter or scan a part number");
+      setError("Please enter text to print");
       return;
     }
 
@@ -319,48 +392,185 @@ const PartsManagement = () => {
     setError("");
 
     try {
-      const { model: autoModel, prefix: autoPrefix } =
-        getModelAndPrefix(scanInput);
+      const textToPrint = scanInput.trim();
 
-      if (autoModel && autoPrefix) {
-        const scanEntry = {
-          id: Date.now(),
-          partNumber: scanInput.toUpperCase(),
-          model: autoModel,
-          prefix: autoPrefix,
-          storageLocation: "25", // Default location for scanned items
-          scannedAt: new Date().toISOString(),
-          printed: false,
-          labelSize: "70x15", // Default to 70x15 for scanned items
-        };
+      // Prepare scan entry data for backend
+      const scanEntryData = {
+        textContent: textToPrint,
+        scannedAt: new Date().toISOString(),
+        printed: false,
+        labelSize: "70x15",
+        status: "processing",
+      };
 
-        setScanHistory((prev) => [scanEntry, ...prev]);
+      // Save scan entry to backend
+      const response = await api.post("/addScanEntry", scanEntryData);
 
-        setTimeout(() => {
-          const serialNo = generateSerialNo(autoPrefix);
-          setScanHistory((prev) =>
-            prev.map((item) =>
-              item.id === scanEntry.id
-                ? { ...item, printed: true, serialNo }
-                : item
-            )
-          );
+      if (response.data.success) {
+        const savedScanEntry = response.data.data;
+
+        // Add to local state immediately
+        setScanHistory((prev) => [savedScanEntry, ...prev]);
+
+        // Auto-print after 1 second delay
+        setTimeout(async () => {
+          try {
+            // Update scan entry status to printed in backend
+            await api.put(`/updateScanEntry/${savedScanEntry._id}`, {
+              printed: true,
+              status: "printed",
+            });
+
+            // Update local state
+            setScanHistory((prev) =>
+              prev.map((item) =>
+                item._id === savedScanEntry._id
+                  ? { ...item, printed: true, status: "printed" }
+                  : item
+              )
+            );
+
+            // Add to print history
+            const printJob = {
+              textContent: textToPrint,
+              quantity: 1,
+              totalLabels: 2, // 70x15 prints 2 copies
+              labelSize: "70x15",
+              printedAt: new Date().toISOString(),
+              scanEntryId: savedScanEntry._id, // Reference to scan entry
+            };
+
+            // Save print job to backend
+            const printResponse = await api.post("/addPrintJob", printJob);
+            if (printResponse.data.success) {
+              setPrintHistory((prev) => [
+                printResponse.data.data || printJob,
+                ...prev,
+              ]);
+            }
+          } catch (updateError) {
+            console.error("Error updating scan entry:", updateError);
+          }
         }, 1000);
 
         setSuccess(
-          `Scanned ${scanInput} successfully and printed in 70x15mm size!`
+          `Text "${textToPrint}" scanned and will be printed (2 labels, 70x15mm)!`
         );
         setTimeout(() => setSuccess(""), 3000);
       } else {
-        setError("Scanned part number not recognized in database");
-        setTimeout(() => setError(""), 4000);
+        setError("Failed to save scan entry to database");
       }
     } catch (err) {
-      setError("Failed to process scanned item");
+      console.error("Error saving scan entry:", err);
+      setError("Failed to process and save scan entry");
     } finally {
       setScanLoading(false);
       setScannerOpen(false);
       setScanInput("");
+    }
+  };
+
+  // Updated scan history table to include delete button
+  const renderScanHistoryTable = () => (
+    <table className="w-full">
+      <thead className="bg-gray-100/80">
+        <tr>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Text Content
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Status
+          </th>
+          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Scanned At
+          </th>
+          <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+            Actions
+          </th>
+        </tr>
+      </thead>
+      <tbody className="bg-white/50 divide-y divide-gray-200">
+        {scanHistory.map((scan) => (
+          <tr
+            key={scan._id || scan.id}
+            className="hover:bg-purple-50/50 transition-colors duration-150"
+          >
+            <td className="px-6 py-4 whitespace-nowrap">
+              <span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-lg font-bold text-sm">
+                {scan.textContent}
+              </span>
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap">
+              {scan.printed || scan.status === "printed" ? (
+                <span className="bg-green-100 text-green-800 px-3 py-1 rounded-lg font-medium text-sm flex items-center space-x-1">
+                  <CheckCircle className="h-3 w-3" />
+                  <span>Printed (2 labels)</span>
+                </span>
+              ) : (
+                <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-lg font-medium text-sm flex items-center space-x-1">
+                  <Clock className="h-3 w-3" />
+                  <span>Processing</span>
+                </span>
+              )}
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+              {new Date(scan.scannedAt).toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </td>
+            <td className="px-6 py-4 whitespace-nowrap text-center">
+              <div className="flex justify-center space-x-2">
+                <button
+                  onClick={() =>
+                    handleQrClick({ textContent: scan.textContent })
+                  }
+                  className="text-purple-600 hover:text-purple-900 p-2 hover:bg-purple-100 rounded-lg transition-colors"
+                  title="View QR code"
+                >
+                  <QrCode className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() =>
+                    handlePrintClick({ textContent: scan.textContent })
+                  }
+                  className="text-green-600 hover:text-green-900 p-2 hover:bg-green-100 rounded-lg transition-colors"
+                  title="Print again"
+                >
+                  <Printer className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() =>
+                    handleDeleteScanEntry(scan._id, scan.textContent)
+                  }
+                  className="text-red-600 hover:text-red-900 p-2 hover:bg-red-100 rounded-lg transition-colors"
+                  title="Delete scan entry"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
+  // Add refresh button functionality for scan history
+  const handleRefreshScanHistory = async () => {
+    setTableLoading(true);
+    try {
+      await fetchScanHistory();
+      setSuccess("Scan history refreshed successfully!");
+      setTimeout(() => setSuccess(""), 2000);
+    } catch (error) {
+      setError("Failed to refresh scan history");
+      setTimeout(() => setError(""), 3000);
+    } finally {
+      setTableLoading(false);
     }
   };
 
@@ -491,6 +701,11 @@ const PartsManagement = () => {
     );
     setIsManualSerialEntry(!hasHistory);
 
+    // Reset custom year/month when opening print dialog
+    setCustomYear("");
+    setCustomMonth("");
+    setShowYearMonthOverride(checkDecemberOverride());
+
     setPrintDialog(true);
   };
 
@@ -501,16 +716,41 @@ const PartsManagement = () => {
 
   const executePrint = async () => {
     try {
-      // Calculate serial range
-      const startSerial = parseInt(serialStartFrom || "001");
+      // Handle text content printing differently
+      if (selectedPrintItem?.textContent) {
+        const printJob = {
+          textContent: selectedPrintItem.textContent,
+          quantity: printQuantity,
+          totalLabels: printQuantity * 2, // 70x15 prints 2 copies
+          labelSize: labelSize,
+          printedAt: new Date().toISOString(),
+        };
+
+        setPrintHistory((prev) => [printJob, ...prev]);
+        setSuccess(
+          `Text "${selectedPrintItem.textContent}" printed! ${printJob.totalLabels} labels`
+        );
+
+        setPrintDialog(false);
+        setSelectedPrintItem(null);
+        setPrintQuantity(1);
+        setSerialStartFrom("00001");
+        setLabelSize("70x15");
+        setIsManualSerialEntry(false);
+        return;
+      }
+
+      // Original part printing logic with year/month override
+      const startSerial = parseInt(serialStartFrom || "00001");
       const endSerial = startSerial + printQuantity - 1;
       const prefix =
         selectedPrintItem?.Prefix || selectedPrintItem?.prefix || "";
 
-      // Generate starting and ending serial numbers
+      // Generate starting and ending serial numbers with custom year/month
       const now = new Date();
-      const year = now.getFullYear().toString().slice(-2);
-      const month = (now.getMonth() + 1).toString().padStart(2, "0");
+      const year = customYear || now.getFullYear().toString().slice(-2);
+      const month =
+        customMonth || (now.getMonth() + 1).toString().padStart(2, "0");
 
       const startSerialNo = `${prefix}${year}${month}${String(
         startSerial
@@ -544,6 +784,8 @@ const PartsManagement = () => {
           selectedPrintItem?.StorageLocation ||
           selectedPrintItem?.storageLocation ||
           "",
+        customYear: customYear,
+        customMonth: customMonth,
       };
 
       // Save print job to database
@@ -559,7 +801,7 @@ const PartsManagement = () => {
         setSuccess(
           `Print job saved! ${totalLabels} labels (Serials: ${startSerialNo} to ${endSerialNo}${
             labelSize === "70x15" ? ", 2 copies each" : ""
-          })`
+          }${customYear || customMonth ? " - Custom Date Used" : ""})`
         );
       } else {
         setError("Print job sent but failed to save record");
@@ -572,9 +814,12 @@ const PartsManagement = () => {
       setSelectedPrintItem(null);
       // Reset form
       setPrintQuantity(1);
-      setSerialStartFrom("001");
+      setSerialStartFrom("00001");
       setLabelSize("70x15");
       setIsManualSerialEntry(false);
+      setCustomYear("");
+      setCustomMonth("");
+      setShowYearMonthOverride(false);
     }
   };
 
@@ -595,10 +840,21 @@ const PartsManagement = () => {
       part.Prefix?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Create QR data safely
+  // Simplified QR data function
   const createQRData = (item) => {
     if (!item) return "";
 
+    // If it's a scan history item with textContent, return just the text
+    if (item.textContent) {
+      return item.textContent;
+    }
+
+    // For part data, return the part number or the full JSON
+    if (item.PartNumber || item.partNumber) {
+      return item.PartNumber || item.partNumber;
+    }
+
+    // Fallback for complex part data
     const qrData = {
       partNumber: item.PartNumber || item.partNumber || "",
       model: item.Model || item.model || "",
@@ -610,17 +866,32 @@ const PartsManagement = () => {
     return JSON.stringify(qrData);
   };
 
-  // Generate preview serial number
+  // Generate preview serial number with custom year/month
   const getPreviewSerialNo = () => {
-    if (!selectedPrintItem) return `T0515SAMA25090${serialStartFrom || "001"}`;
+    if (!selectedPrintItem) return `T0515SAMA25090001`;
+
+    // Handle text content
+    if (selectedPrintItem.textContent) {
+      return selectedPrintItem.textContent;
+    }
 
     const prefix =
       selectedPrintItem.Prefix || selectedPrintItem.prefix || "T0515SAMA";
     const now = new Date();
-    const year = now.getFullYear().toString().slice(-2);
-    const month = (now.getMonth() + 1).toString().padStart(2, "0");
-    const serial = (serialStartFrom || "001").padStart(3, "0");
-    return `${prefix}${year}${month}${serial}`;
+    const year = customYear || now.getFullYear().toString().slice(-2);
+    const month =
+      customMonth || (now.getMonth() + 1).toString().padStart(2, "0");
+    const serial = (serialStartFrom || "00001").padStart(3, "0");
+
+    // Check if prefix contains underscores
+    if (prefix.includes("_")) {
+      // Replace underscores with year and month, then add serial
+      const prefixWithDate = prefix.replace(/_/g, year + month);
+      return `${prefixWithDate}${serial}`;
+    } else {
+      // No underscores: append year + month + serial
+      return `${prefix}${year}${month}${serial}`;
+    }
   };
 
   return (
@@ -1115,7 +1386,7 @@ const PartsManagement = () => {
                 </table>
               )
             ) : tableView === "scans" ? (
-              // Scan History Table
+              // Scan History Table - Updated with delete button
               scanHistory.length === 0 ? (
                 <div className="text-center py-16">
                   <div className="bg-gray-100 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
@@ -1125,116 +1396,14 @@ const PartsManagement = () => {
                     No scan history
                   </h3>
                   <p className="text-gray-600 max-w-md mx-auto">
-                    Start scanning parts using the QR scanner to see your scan
+                    Start scanning text using the QR scanner to see your scan
                     history here.
                   </p>
                 </div>
               ) : (
-                <table className="w-full">
-                  <thead className="bg-gray-100/80">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Part Number
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Model
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Serial Number
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Scanned At
-                      </th>
-                      <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white/50 divide-y divide-gray-200">
-                    {scanHistory.map((scan) => (
-                      <tr
-                        key={scan.id}
-                        className="hover:bg-purple-50/50 transition-colors duration-150"
-                      >
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-lg font-bold text-sm">
-                            {scan.partNumber}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="font-semibold text-gray-900">
-                            {scan.model}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {scan.serialNo ? (
-                            <span className="bg-gray-100 text-gray-800 px-3 py-1 rounded-lg font-mono text-sm font-bold">
-                              {scan.serialNo}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400 italic">
-                              Generating...
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {scan.printed ? (
-                            <span className="bg-green-100 text-green-800 px-3 py-1 rounded-lg font-medium text-sm flex items-center space-x-1">
-                              <CheckCircle className="h-3 w-3" />
-                              <span>Printed</span>
-                            </span>
-                          ) : (
-                            <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-lg font-medium text-sm flex items-center space-x-1">
-                              <Clock className="h-3 w-3" />
-                              <span>Processing</span>
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(scan.scannedAt).toLocaleDateString(
-                            "en-US",
-                            {
-                              year: "numeric",
-                              month: "short",
-                              day: "numeric",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            }
-                          )}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <div className="flex justify-center space-x-2">
-                            <button
-                              onClick={() => handleQrClick(scan)}
-                              className="text-purple-600 hover:text-purple-900 p-2 hover:bg-purple-100 rounded-lg transition-colors"
-                              title="View QR code"
-                            >
-                              <QrCode className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => handlePrintClick(scan)}
-                              className="text-green-600 hover:text-green-900 p-2 hover:bg-green-100 rounded-lg transition-colors"
-                              title="Print again"
-                            >
-                              <Printer className="h-4 w-4" />
-                            </button>
-                            <button
-                              className="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                              title="View details"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                renderScanHistoryTable()
               )
-            ) : // Print History Table
+            ) : // Print History Table - Updated for text content
             printHistory.length === 0 ? (
               <div className="text-center py-16">
                 <div className="bg-gray-100 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
@@ -1252,19 +1421,13 @@ const PartsManagement = () => {
                 <thead className="bg-gray-100/80">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Part Number
+                      Content
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Model
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Serial Range
+                      Type
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Label Size
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Quantity
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Total Labels
@@ -1285,32 +1448,23 @@ const PartsManagement = () => {
                     >
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="bg-green-100 text-green-800 px-3 py-1 rounded-lg font-bold text-sm">
-                          {print.partNumber}
+                          {print.textContent || print.partNumber}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="font-semibold text-gray-900">
-                          {print.model}
+                        <span
+                          className={`px-3 py-1 rounded-lg font-medium text-sm ${
+                            print.textContent
+                              ? "bg-purple-100 text-purple-800"
+                              : "bg-blue-100 text-blue-800"
+                          }`}
+                        >
+                          {print.textContent ? "Text" : "Part"}
                         </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="text-sm">
-                          <div className="font-mono font-bold text-gray-800">
-                            {print.startingSerialNo}
-                          </div>
-                          <div className="text-gray-500">
-                            to {print.endingSerialNo}
-                          </div>
-                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-lg font-medium text-sm">
                           {print.labelSize}mm
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="bg-purple-100 text-purple-800 px-3 py-1 rounded-lg font-medium text-sm">
-                          {print.quantity} serials
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
@@ -1331,13 +1485,17 @@ const PartsManagement = () => {
                         <div className="flex justify-center space-x-2">
                           <button
                             onClick={() =>
-                              handleQrClick({
-                                PartNumber: print.partNumber,
-                                Model: print.model,
-                                Prefix: print.prefix,
-                                SerialNo: print.startingSerialNo,
-                                StorageLocation: print.storageLocation,
-                              })
+                              handleQrClick(
+                                print.textContent
+                                  ? { textContent: print.textContent }
+                                  : {
+                                      PartNumber: print.partNumber,
+                                      Model: print.model,
+                                      Prefix: print.prefix,
+                                      SerialNo: print.startingSerialNo,
+                                      StorageLocation: print.storageLocation,
+                                    }
+                              )
                             }
                             className="text-blue-600 hover:text-blue-900 p-2 hover:bg-blue-100 rounded-lg transition-colors"
                             title="View QR code"
@@ -1346,23 +1504,21 @@ const PartsManagement = () => {
                           </button>
                           <button
                             onClick={() =>
-                              handlePrintClick({
-                                PartNumber: print.partNumber,
-                                Model: print.model,
-                                Prefix: print.prefix,
-                                StorageLocation: print.storageLocation,
-                              })
+                              handlePrintClick(
+                                print.textContent
+                                  ? { textContent: print.textContent }
+                                  : {
+                                      PartNumber: print.partNumber,
+                                      Model: print.model,
+                                      Prefix: print.prefix,
+                                      StorageLocation: print.storageLocation,
+                                    }
+                              )
                             }
                             className="text-green-600 hover:text-green-900 p-2 hover:bg-green-100 rounded-lg transition-colors"
                             title="Print again"
                           >
                             <Printer className="h-4 w-4" />
-                          </button>
-                          <button
-                            className="text-gray-400 hover:text-gray-600 p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                            title="View details"
-                          >
-                            <Eye className="h-4 w-4" />
                           </button>
                         </div>
                       </td>
@@ -1387,7 +1543,10 @@ const PartsManagement = () => {
                 <div>
                   <h3 className="text-xl font-bold text-gray-900">QR Code</h3>
                   <p className="text-gray-600">
-                    {selectedQrItem.PartNumber || selectedQrItem.partNumber}
+                    {selectedQrItem.textContent ||
+                      selectedQrItem.PartNumber ||
+                      selectedQrItem.partNumber ||
+                      "Content"}
                   </p>
                 </div>
               </div>
@@ -1400,72 +1559,47 @@ const PartsManagement = () => {
             </div>
 
             <div className="p-6 text-center">
-              {/* QR Code Display */}
               <div className="bg-white p-4 rounded-xl border-2 border-gray-200 inline-block mb-4">
-                <div className="w-48 h-48 bg-gray-100 border-2 border-dashed border-gray-300 flex items-center justify-center">
-                  <div className="text-center">
-                    <QrCode className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-                    <p className="text-xs text-gray-500">QR Code Preview</p>
-                    <p className="text-xs text-gray-400 mt-1 font-mono break-all">
-                      {createQRData(selectedQrItem).substring(0, 50)}...
-                    </p>
-                  </div>
-                </div>
+                <QRCode
+                  value={createQRData(selectedQrItem)}
+                  size={200}
+                  style={{ height: "200px", width: "200px" }}
+                  viewBox="0 0 256 256"
+                />
               </div>
 
-              {/* Part Details */}
               <div className="bg-gray-50 rounded-xl p-4 text-left">
-                <h4 className="font-semibold text-gray-800 mb-3">
-                  Part Details
-                </h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Part Number:</span>
-                    <span className="font-mono font-bold">
-                      {selectedQrItem.PartNumber || selectedQrItem.partNumber}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Model:</span>
-                    <span className="font-semibold">
-                      {selectedQrItem.Model || selectedQrItem.model}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Serial Number:</span>
-                    <span className="font-mono font-bold">
-                      {selectedQrItem.SerialNo ||
-                        selectedQrItem.serialNo ||
-                        "Not assigned"}
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Prefix:</span>
-                    <span className="font-mono">
-                      {selectedQrItem.Prefix || selectedQrItem.prefix}
-                    </span>
-                  </div>
-                  {(selectedQrItem.StorageLocation ||
-                    selectedQrItem.storageLocation) && (
+                <h4 className="font-semibold text-gray-800 mb-3">Content</h4>
+                <div className="text-lg font-mono bg-white p-3 rounded border break-all">
+                  {selectedQrItem.textContent ||
+                    selectedQrItem.PartNumber ||
+                    selectedQrItem.partNumber ||
+                    "No content"}
+                </div>
+                {!selectedQrItem.textContent && (
+                  <div className="mt-3 space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Location:</span>
-                      <span>
-                        {selectedQrItem.StorageLocation ||
-                          selectedQrItem.storageLocation}
+                      <span className="text-gray-600">Model:</span>
+                      <span className="font-semibold">
+                        {selectedQrItem.Model || selectedQrItem.model || "N/A"}
                       </span>
                     </div>
-                  )}
-                </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Serial Number:</span>
+                      <span className="font-mono font-bold">
+                        {selectedQrItem.SerialNo ||
+                          selectedQrItem.serialNo ||
+                          "Not assigned"}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Download Button */}
               <button
                 onClick={() => {
-                  setSuccess(
-                    `QR Code for ${
-                      selectedQrItem.PartNumber || selectedQrItem.partNumber
-                    } downloaded!`
-                  );
+                  setSuccess(`QR Code downloaded!`);
+                  setQrDialog(false);
                 }}
                 className="mt-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white px-6 py-2 rounded-lg hover:shadow-lg transition-all duration-200 hover:-translate-y-1 flex items-center space-x-2 mx-auto"
               >
@@ -1488,10 +1622,10 @@ const PartsManagement = () => {
                 </div>
                 <div>
                   <h3 className="text-xl font-bold text-gray-900">
-                    Quick Scanner
+                    Quick Text Printer
                   </h3>
                   <p className="text-gray-600">
-                    Scan or enter part number for instant printing
+                    Enter any text for instant QR code printing
                   </p>
                 </div>
               </div>
@@ -1510,7 +1644,7 @@ const PartsManagement = () => {
                   type="text"
                   value={scanInput}
                   onChange={(e) => setScanInput(e.target.value)}
-                  placeholder="Scan QR code or type part number..."
+                  placeholder="Enter any text to print as QR code..."
                   autoFocus
                   disabled={scanLoading}
                   onKeyPress={(e) => {
@@ -1525,14 +1659,14 @@ const PartsManagement = () => {
               <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4">
                 <h4 className="font-medium text-blue-800 mb-2">How it works</h4>
                 <div className="text-sm text-blue-700 space-y-1">
-                  <p>1. Scan QR code or manually type the part number</p>
-                  <p>2. System will auto-detect model and prefix</p>
                   <p>
-                    3. Label will be automatically printed (70mm x 15mm size)
+                    1. Enter any text (like "asfasvcsaxc", "Hello World", etc.)
                   </p>
+                  <p>2. System will print the exact text as QR code</p>
                   <p>
-                    4. Entry will be saved to scan history with default location
+                    3. 2 labels will be printed automatically (70mm x 15mm size)
                   </p>
+                  <p>4. Entry will be saved to scan history</p>
                 </div>
               </div>
             </div>
@@ -1554,17 +1688,17 @@ const PartsManagement = () => {
                 ) : (
                   <Printer className="h-5 w-5" />
                 )}
-                <span>{scanLoading ? "Processing..." : "Scan & Print"}</span>
+                <span>{scanLoading ? "Processing..." : "Print as QR"}</span>
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Print Dialog */}
+      {/* Print Dialog - Enhanced with Year/Month Override */}
       {printDialog && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-7xl w-full h-[85vh] flex flex-col overflow-hidden">
             <div className="flex items-center space-x-3 p-6 border-b border-gray-200">
               <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-3 rounded-lg">
                 <Printer className="h-6 w-6 text-white" />
@@ -1574,153 +1708,306 @@ const PartsManagement = () => {
                   Label Print Configuration
                 </h3>
                 <p className="text-gray-600">
-                  Configure your label settings and print automatically
+                  Configure your label settings and print
                 </p>
               </div>
             </div>
 
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Print Quantity
-                  </label>
-                  <input
-                    type="number"
-                    value={printQuantity}
-                    onChange={(e) =>
-                      setPrintQuantity(
-                        Math.max(1, parseInt(e.target.value) || 1)
-                      )
-                    }
-                    min="1"
-                    max="100"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Serial Number
-                  </label>
-                  <input
-                    type="text"
-                    value={serialStartFrom}
-                    onChange={(e) => setSerialStartFrom(e.target.value)}
-                    placeholder="001"
-                    className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
-                      !isManualSerialEntry ? "bg-green-50 border-green-300" : ""
-                    }`}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Label Size
-                  </label>
-                  <select
-                    value={labelSize}
-                    onChange={(e) => setLabelSize(e.target.value)}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="70x15">
-                      70mm × 15mm - Serial + QR Code (2 copies per serial)
-                    </option>
-                    <option value="100x50">
-                      100mm × 50mm - Full Details + QR Code (1 copy per serial)
-                    </option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Label Preview with QR Code */}
-              <div className="mt-6 border-2 border-dashed border-gray-300 rounded-xl p-6 text-center bg-gray-50">
-                <h4 className="font-semibold text-gray-800 mb-4">
-                  Label Preview ({labelSize}mm)
-                </h4>
-                {labelSize === "70x15" ? (
-                  <div className="w-80 h-20 border-2 border-gray-800 mx-auto flex items-center bg-white p-2">
-                    {/* QR Code on Left */}
-                    <div className="flex-shrink-0 mr-4">
-                      <QRCode
-                        value={
-                          selectedPrintItem
-                            ? createQRData(selectedPrintItem)
-                            : JSON.stringify({
-                                partNumber: "SA0500F001",
-                                model: "Isam 550 Master",
-                                serialNo: getPreviewSerialNo(),
-                                prefix: "T0515SAMA",
-                              })
-                        }
-                        size={60}
-                        style={{ height: "60px", width: "60px" }}
-                        viewBox={`0 0 256 256`}
-                      />
-                    </div>
-                    {/* Serial Number on Right */}
-                    <div className="flex-1 flex flex-col justify-center items-center text-center">
-                      <div className="font-bold text-lg font-mono">
-                        {getPreviewSerialNo()}
-                      </div>
-                      <div className="text-xs text-gray-600">
-                        {selectedPrintItem?.PartNumber ||
-                          selectedPrintItem?.partNumber ||
-                          "SA0500F001"}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="w-96 h-48 border-2 border-gray-800 mx-auto flex bg-white p-3">
-                    {/* QR Code on Left */}
-                    <div className="flex-shrink-0 mr-4 flex items-center">
-                      <QRCode
-                        value={
-                          selectedPrintItem
-                            ? createQRData(selectedPrintItem)
-                            : JSON.stringify({
-                                partNumber: "SA0500F001",
-                                model: "Isam 550 Master",
-                                serialNo: getPreviewSerialNo(),
-                                prefix: "T0515SAMA",
-                              })
-                        }
-                        size={140}
-                        style={{ height: "140px", width: "140px" }}
-                        viewBox={`0 0 256 256`}
-                      />
-                    </div>
-                    {/* Details on Right */}
-                    <div className="flex-1 flex flex-col justify-center text-left text-sm space-y-2">
-                      <div className="font-bold text-lg">
-                        {selectedPrintItem?.PartNumber ||
-                          selectedPrintItem?.partNumber ||
-                          "SA0500F001"}
-                      </div>
-                      <div className="text-gray-700">
-                        <strong>Model:</strong>{" "}
-                        {selectedPrintItem?.Model ||
-                          selectedPrintItem?.model ||
-                          "Isam 550 Master"}
-                      </div>
-                      <div className="text-gray-700 font-mono font-bold">
-                        <strong>Serial:</strong> {getPreviewSerialNo()}
-                      </div>
-                      <div className="text-gray-700">
-                        <strong>Location:</strong>{" "}
-                        {selectedPrintItem?.StorageLocation ||
-                          selectedPrintItem?.storageLocation ||
-                          "N/A"}
+            <div className="flex flex-1 min-h-0">
+              {/* Left Side - Form Content */}
+              <div className="flex-1 p-6 overflow-y-auto">
+                {/* Year/Month Override Alert for December */}
+                {checkDecemberOverride() && !selectedPrintItem?.textContent && (
+                  <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-xl p-3">
+                    <div className="flex items-start space-x-3">
+                      <Calendar className="h-5 w-5 text-yellow-600 mt-0.5" />
+                      <div>
+                        <h4 className="font-medium text-yellow-800">
+                          {new Date().getMonth() === 11
+                            ? "December Override Available"
+                            : "Custom Date Override"}
+                        </h4>
+                        <p className="text-yellow-700 mt-1">
+                          {new Date().getMonth() === 11
+                            ? "It's December! You can manually set the year and month for serial number generation."
+                            : "You can manually override the year and month for serial number generation."}
+                        </p>
                       </div>
                     </div>
                   </div>
                 )}
+
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Print Quantity
+                      </label>
+                      <input
+                        type="number"
+                        value={printQuantity}
+                        onChange={(e) =>
+                          setPrintQuantity(
+                            Math.max(1, parseInt(e.target.value) || 1)
+                          )
+                        }
+                        min="1"
+                        max="100"
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      />
+                    </div>
+
+                    {!selectedPrintItem?.textContent && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Serial Number
+                        </label>
+                        <input
+                          type="text"
+                          value={serialStartFrom}
+                          onChange={(e) => setSerialStartFrom(e.target.value)}
+                          placeholder="00001"
+                          className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                            !isManualSerialEntry
+                              ? "bg-green-50 border-green-300"
+                              : ""
+                          }`}
+                        />
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Label Size
+                      </label>
+                      <select
+                        value={labelSize}
+                        onChange={(e) => setLabelSize(e.target.value)}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      >
+                        <option value="70x15">
+                          70mm × 15mm (2 copies per item)
+                        </option>
+                        <option value="100x50">
+                          100mm × 50mm (1 copy per item)
+                        </option>
+                      </select>
+                    </div>
+
+                    {/* Custom Year Input */}
+                    {!selectedPrintItem?.textContent && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Custom Year (YY)
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setShowYearMonthOverride(!showYearMonthOverride)
+                            }
+                            className="ml-2 text-blue-600 hover:text-blue-800 text-xs"
+                          >
+                            {showYearMonthOverride ? "Hide" : "Show"}
+                          </button>
+                        </label>
+                        <input
+                          type="text"
+                          value={customYear}
+                          onChange={(e) =>
+                            setCustomYear(e.target.value.slice(0, 2))
+                          }
+                          placeholder={new Date()
+                            .getFullYear()
+                            .toString()
+                            .slice(-2)}
+                          disabled={!showYearMonthOverride}
+                          className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                            !showYearMonthOverride ? "bg-gray-100" : ""
+                          } ${
+                            customYear ? "bg-yellow-50 border-yellow-300" : ""
+                          }`}
+                        />
+                      </div>
+                    )}
+
+                    {/* Custom Month Input */}
+                    {!selectedPrintItem?.textContent && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Custom Month (MM)
+                        </label>
+                        <select
+                          value={customMonth}
+                          onChange={(e) => setCustomMonth(e.target.value)}
+                          disabled={!showYearMonthOverride}
+                          className={`w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                            !showYearMonthOverride ? "bg-gray-100" : ""
+                          } ${
+                            customMonth ? "bg-yellow-50 border-yellow-300" : ""
+                          }`}
+                        >
+                          <option value="">
+                            {String(new Date().getMonth() + 1).padStart(2, "0")}{" "}
+                            (Current)
+                          </option>
+                          <option value="01">01 (January)</option>
+                          <option value="02">02 (February)</option>
+                          <option value="03">03 (March)</option>
+                          <option value="04">04 (April)</option>
+                          <option value="05">05 (May)</option>
+                          <option value="06">06 (June)</option>
+                          <option value="07">07 (July)</option>
+                          <option value="08">08 (August)</option>
+                          <option value="09">09 (September)</option>
+                          <option value="10">10 (October)</option>
+                          <option value="11">11 (November)</option>
+                          <option value="12">12 (December)</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Custom Date Warning */}
+                  {(customYear || customMonth) &&
+                    !selectedPrintItem?.textContent && (
+                      <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
+                        <div className="flex items-start space-x-3">
+                          <AlertTriangle className="h-5 w-5 text-orange-600 mt-0.5" />
+                          <div>
+                            <h4 className="font-medium text-orange-800">
+                              Custom Date Override Active
+                            </h4>
+                            <p className="text-orange-700 mt-1">
+                              Serial numbers will use custom date:{" "}
+                              {customYear ||
+                                new Date().getFullYear().toString().slice(-2)}
+                              /
+                              {customMonth ||
+                                String(new Date().getMonth() + 1).padStart(
+                                  2,
+                                  "0"
+                                )}
+                              <br />
+                              <strong>Preview:</strong> {getPreviewSerialNo()}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                  {selectedPrintItem?.textContent && (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                      <p className="text-yellow-800 text-sm">
+                        <strong>Text Mode:</strong> This will print "
+                        {selectedPrintItem.textContent}" as QR codes with{" "}
+                        {printQuantity * (labelSize === "70x15" ? 2 : 1)} total
+                        labels.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Right Side - Label Preview */}
+              <div className="w-1/2 min-w-[400px] border-l border-gray-200 p-6 bg-gray-50 flex flex-col justify-center overflow-y-auto">
+                <h4 className="font-semibold text-gray-800 mb-4 text-center text-lg">
+                  Label Preview ({labelSize}mm)
+                </h4>
+
+                <div className="flex justify-center items-center flex-1">
+                  {labelSize === "70x15" ? (
+                    <div className="w-80 h-20 border-2 border-gray-800 flex items-center bg-white p-2 shadow-lg">
+                      {/* QR Code on Left */}
+                      <div className="flex-shrink-0 mr-4">
+                        <QRCode
+                          value={
+                            createQRData(selectedPrintItem) || "Sample Text"
+                          }
+                          size={60}
+                          style={{ height: "60px", width: "60px" }}
+                          viewBox={`0 0 256 256`}
+                        />
+                      </div>
+                      {/* Content on Right */}
+                      <div className="flex-1 flex flex-col justify-center items-center text-center">
+                        <div className="font-bold text-lg font-mono">
+                          {selectedPrintItem?.textContent ||
+                            getPreviewSerialNo()}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="w-96 h-48 border-2 border-gray-800 flex bg-white p-3 shadow-lg">
+                      {/* QR Code on Left */}
+                      <div className="flex-shrink-0 mr-4 flex items-center">
+                        <QRCode
+                          value={
+                            createQRData(selectedPrintItem) || "Sample Text"
+                          }
+                          size={140}
+                          style={{ height: "140px", width: "140px" }}
+                          viewBox={`0 0 256 256`}
+                        />
+                      </div>
+                      {/* Details on Right */}
+                      <div className="flex-1 flex flex-col justify-center text-left text-sm space-y-2">
+                        <div className="font-bold text-md">
+                          <strong>
+                            Part no:
+                            {selectedPrintItem?.textContent ||
+                              selectedPrintItem?.PartNumber ||
+                              selectedPrintItem?.partNumber ||
+                              "SA0500F001"}
+                          </strong>
+                        </div>
+
+                        {!selectedPrintItem?.textContent && (
+                          <>
+                            <div className="font-bold text-md">
+                              <strong>
+                                Model:{" "}
+                                {selectedPrintItem?.Model ||
+                                  selectedPrintItem?.model ||
+                                  "Isam 550 Master"}
+                              </strong>
+                            </div>
+                            <div className="font-bold text-md">
+                              <strong>Location:</strong>{" "}
+                              <strong>
+                                {selectedPrintItem?.StorageLocation ||
+                                  selectedPrintItem?.storageLocation ||
+                                  "Not specified"}
+                              </strong>
+                            </div>
+                            {(customYear || customMonth) && (
+                              <div className="text-orange-700 text-xs">
+                                <strong>Custom Date:</strong>{" "}
+                                {customYear ||
+                                  new Date().getFullYear().toString().slice(-2)}
+                                /
+                                {customMonth ||
+                                  String(new Date().getMonth() + 1).padStart(
+                                    2,
+                                    "0"
+                                  )}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className="flex justify-end space-x-3 p-6 border-t border-gray-200">
+            <div className="flex justify-end space-x-3 p-6 border-t border-gray-200 flex-shrink-0 bg-white">
               <button
-                onClick={() => setPrintDialog(false)}
+                onClick={() => {
+                  setPrintDialog(false);
+                  setCustomYear("");
+                  setCustomMonth("");
+                  setShowYearMonthOverride(false);
+                }}
                 className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Cancel
@@ -1734,6 +2021,7 @@ const PartsManagement = () => {
                   Print{" "}
                   {labelSize === "70x15" ? printQuantity * 2 : printQuantity}{" "}
                   Labels
+                  {customYear || customMonth ? " (Custom Date)" : ""}
                 </span>
               </button>
             </div>
