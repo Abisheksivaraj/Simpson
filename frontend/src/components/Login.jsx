@@ -61,32 +61,33 @@ const Login = () => {
     setSuccess("");
 
     try {
-      // Log the request for debugging
-      console.log("Making login request to:", "/api/auth/login");
-      console.log("Request data:", { email: formData.email, password: "***" });
+      // Set a reasonable timeout for the request (10 seconds)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-      const response = await api.post("/api/auth/login", {
-        email: formData.email,
-        password: formData.password,
-      });
+      const response = await api.post(
+        "/api/auth/login",
+        {
+          email: formData.email,
+          password: formData.password,
+        },
+        {
+          signal: controller.signal,
+          timeout: 10000, // 10 second timeout
+        }
+      );
 
-      console.log("Response received:", response);
+      clearTimeout(timeoutId);
 
-      let data;
-      if (response.data) {
-        data = response.data;
-      } else if (response.json) {
-        data = await response.json();
-      } else {
-        data = response;
-      }
+      // Simplified response handling - axios already parses JSON
+      const data = response.data;
 
-      console.log("Processed data:", data);
-
-      if (response.status === 200 || response.ok || data.success) {
+      if (response.status === 200 && data) {
         // Store token and user data
-        if (typeof Storage !== "undefined") {
+        if (data.token) {
           localStorage.setItem("token", data.token);
+        }
+        if (data.user) {
           localStorage.setItem("user", JSON.stringify(data.user));
         }
 
@@ -94,36 +95,34 @@ const Login = () => {
           `Welcome back, ${data.user?.userName || data.user?.name || "User"}!`
         );
 
+        // Reduced timeout for better UX
         setTimeout(() => {
           navigate("/models");
-        }, 1500);
+        }, 1000);
       } else {
-        setError(data.message || "Login failed. Please try again.");
+        setError(data?.message || "Login failed. Please try again.");
       }
     } catch (error) {
-      console.error("Full error object:", error);
+      console.error("Login error:", error);
 
-      // More detailed error logging
-      if (error.response) {
-        console.error("Error response:", error.response);
-        console.error("Error status:", error.response.status);
-        console.error("Error data:", error.response.data);
-
-        const errorData = error.response.data;
-        setError(
-          errorData.message ||
-            `Server error: ${error.response.status}. Please try again.`
-        );
+      // Simplified error handling
+      if (error.name === "AbortError") {
+        setError("Request timeout. Please try again.");
+      } else if (error.response) {
+        // Server responded with error status
+        const errorMessage =
+          error.response.data?.message ||
+          `Server error (${error.response.status}). Please try again.`;
+        setError(errorMessage);
       } else if (error.request) {
-        console.error("Error request:", error.request);
+        // Network error
         setError(
-          "Network error. Cannot reach server. Please check if the backend is running."
+          "Cannot connect to server. Please check your internet connection."
         );
       } else if (error.code === "ECONNABORTED") {
         setError("Request timeout. Please try again.");
       } else {
-        console.error("Error message:", error.message);
-        setError(`Unexpected error: ${error.message}`);
+        setError("An unexpected error occurred. Please try again.");
       }
     } finally {
       setLoading(false);
@@ -143,13 +142,11 @@ const Login = () => {
   };
 
   const handleForgotPassword = () => {
-    // Add proper navigation or modal logic here
     console.log("Navigate to forgot password page");
     // navigate("/forgot-password");
   };
 
   const handleSignUp = () => {
-    // Add proper navigation logic here
     console.log("Navigate to register page");
     navigate("/register");
   };
@@ -258,7 +255,7 @@ const Login = () => {
                   focusedField === "password" || formData.password
                     ? "border-black pt-6 pb-2"
                     : "border-gray-300 hover:border-gray-400"
-                } ${loading ? "opacity-50 cursor-not-allowed" : ""}`}
+                }`}
                 placeholder=" "
                 autoComplete="current-password"
                 required
@@ -311,6 +308,27 @@ const Login = () => {
                 "Login"
               )}
             </button>
+
+            {/* Additional Links */}
+            <div className="text-center space-y-2">
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                className="text-sm text-blue-600 hover:text-blue-800 transition-colors"
+              >
+                Forgot Password?
+              </button>
+              <div className="text-sm text-gray-600">
+                Don't have an account?{" "}
+                <button
+                  type="button"
+                  onClick={handleSignUp}
+                  className="text-blue-600 hover:text-blue-800 transition-colors font-medium"
+                >
+                  Sign Up
+                </button>
+              </div>
+            </div>
           </form>
         </div>
       </div>
