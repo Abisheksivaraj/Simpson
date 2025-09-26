@@ -237,7 +237,7 @@ const PartsManagement = () => {
     }
 
     try {
-      const response = await api.delete(`/deleteScanEntry/${scanId}`);
+      const response = await api.delete(`/api/deleteScanEntry/${scanId}`);
 
       if (response.data.success) {
         setScanHistory((prev) => prev.filter((scan) => scan._id !== scanId));
@@ -295,7 +295,7 @@ const PartsManagement = () => {
     setTableLoading(true);
     setError("");
     try {
-      const response = await api.get("/getModel", {
+      const response = await api.get("/api/getModel", {
         params: {
           search: searchTerm,
           limit: 100,
@@ -319,7 +319,7 @@ const PartsManagement = () => {
 
   const fetchPrintHistory = async () => {
     try {
-      const response = await api.get("/getPrintHistory", {
+      const response = await api.get("/api/getPrintHistory", {
         params: {
           limit: 100,
           sortBy: "printedAt",
@@ -365,7 +365,7 @@ const PartsManagement = () => {
   // Add this function to fetch scan history from backend
   const fetchScanHistory = async () => {
     try {
-      const response = await api.get("/getScanHistory", {
+      const response = await api.get("/api/getScanHistory", {
         params: {
           limit: 100,
           sortBy: "scannedAt",
@@ -404,7 +404,7 @@ const PartsManagement = () => {
       };
 
       // Save scan entry to backend
-      const response = await api.post("/addScanEntry", scanEntryData);
+      const response = await api.post("/api/addScanEntry", scanEntryData);
 
       if (response.data.success) {
         const savedScanEntry = response.data.data;
@@ -416,7 +416,7 @@ const PartsManagement = () => {
         setTimeout(async () => {
           try {
             // Update scan entry status to printed in backend
-            await api.put(`/updateScanEntry/${savedScanEntry._id}`, {
+            await api.put(`/api/updateScanEntry/${savedScanEntry._id}`, {
               printed: true,
               status: "printed",
             });
@@ -441,7 +441,7 @@ const PartsManagement = () => {
             };
 
             // Save print job to backend
-            const printResponse = await api.post("/addPrintJob", printJob);
+            const printResponse = await api.post("/api/addPrintJob", printJob);
             if (printResponse.data.success) {
               setPrintHistory((prev) => [
                 printResponse.data.data || printJob,
@@ -588,7 +588,7 @@ const PartsManagement = () => {
       let response;
 
       if (editIndex !== null) {
-        response = await api.put(`/parts/${editId}`, {
+        response = await api.put(`/api/parts/${editId}`, {
           PartNumber: partNo,
           Model: model,
           Prefix: prefix,
@@ -609,7 +609,7 @@ const PartsManagement = () => {
           )
         );
       } else {
-        response = await api.post("/addModels", {
+        response = await api.post("/api/addModels", {
           PartNumber: partNo,
           Model: model,
           Prefix: prefix,
@@ -671,7 +671,7 @@ const PartsManagement = () => {
     }
 
     try {
-      const response = await api.delete(`/parts/${partId}`);
+      const response = await api.delete(`/api/parts/${partId}`);
 
       if (response.data.success) {
         setParts((prev) => prev.filter((part) => part._id !== partId));
@@ -789,7 +789,7 @@ const PartsManagement = () => {
       };
 
       // Save print job to database
-      const response = await api.post("/addPrintJob", printJobData);
+      const response = await api.post("/api/addPrintJob", printJobData);
 
       if (response.data.success) {
         // Add to local print history
