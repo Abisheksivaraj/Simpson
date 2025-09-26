@@ -34,13 +34,6 @@ app.use(
   })
 );
 
-app.use((req, res, next) => {
-  req.setTimeout(10000, () => {
-    res.status(408).json({ message: "Request timeout" });
-  });
-  next();
-});
-
 const login = require("./Route/LoginRoute");
 app.use("/api/auth/", login);
 
