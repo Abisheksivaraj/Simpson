@@ -9,8 +9,9 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 app.use(
   cors({
-    origin: "https://simpson.onrender.com", // Removed trailing slash
+    // origin: "https://simpson.onrender.com", // Removed trailing slash
     // origin: "http://localhost:5173",
+    origin:"*",
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
