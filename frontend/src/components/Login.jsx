@@ -8,6 +8,7 @@ import {
   CheckCircle,
 } from "lucide-react";
 import bg from "../assets/bg.jpg";
+import { useNavigate } from "react-router-dom";
 
 // Import your API configuration
 import { api } from "../components/apiConfig";
@@ -22,6 +23,7 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const navigate = useNavigate();
 
   const handleInputChange = (e) => {
     setFormData({
@@ -90,8 +92,8 @@ const Login = () => {
 
         // Force both Admin and regular users to go to /models page
         setTimeout(() => {
-          // Use window.location.replace to prevent back button issues
-          window.location.replace("/models");
+          // Use the navigate function from useNavigate hook
+          navigate("/models");
         }, 1500);
       } else {
         setError(data.message || "Login failed. Please try again.");
@@ -133,13 +135,13 @@ const Login = () => {
   const handleForgotPassword = () => {
     // Add proper navigation or modal logic here
     console.log("Navigate to forgot password page");
-    // window.location.href = "/forgot-password";
+    // navigate("/forgot-password");
   };
 
   const handleSignUp = () => {
     // Add proper navigation logic here
     console.log("Navigate to register page");
-    window.location.href = "/register";
+    navigate("/register");
   };
 
   return (
