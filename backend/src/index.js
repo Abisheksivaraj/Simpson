@@ -47,7 +47,7 @@ app.use("/api", scanHistoryRoute);
 
 app.get("/", (req, res) => {
   return res.status(200).send({
-    message: "ABB Project backend running successfully",
+    message: "Simpson backend running successfully",
     status: true,
   });
 });
