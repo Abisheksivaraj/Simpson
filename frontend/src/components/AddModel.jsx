@@ -24,72 +24,198 @@ import {
 
 import QRCode from "react-qr-code";
 
-// Mock API for demo purposes
-const api = {
-  get: (url, config) => Promise.resolve({ data: { success: true, data: [] } }),
-  post: (url, data) => Promise.resolve({ data: { success: true, data: data } }),
-  put: (url, data) => Promise.resolve({ data: { success: true, data: data } }),
-  delete: (url) => Promise.resolve({ data: { success: true } }),
-};
+import { api } from "./apiConfig";
+import { renderToString } from "react-dom/server";
 
-const generateSerialNo = (prefix, customYear, customMonth) => {
-  const now = new Date();
-  // Use custom year/month if provided, otherwise use current date
-  const year = customYear || now.getFullYear().toString().slice(-2);
-  const month = customMonth || (now.getMonth() + 1).toString().padStart(2, "0");
-  const serial = Math.floor(Math.random() * 1000)
-    .toString()
-    .padStart(3, "0");
+// Enhanced print styles for exact label sizing
+// Enhanced print styles for exact label sizing - FIXED VERSION
+const getPrintStyles = (labelSize) => {
+  const pageSize = labelSize === "70x15" ? "70mm 15mm" : "100mm 50mm";
 
-  // Check if prefix contains underscores
-  if (prefix.includes("_")) {
-    // Replace underscores with year and month, then add serial
-    const prefixWithDate = prefix.replace(/_/g, year + month);
-    return `${prefixWithDate}${serial}`;
-  } else {
-    // No underscores: append year + month + serial (current behavior)
-    return `${prefix}${year}${month}${serial}`;
+  const styles = `
+<style>
+@media print {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
   }
+  
+  body {
+    margin: 0;
+    padding: 0;
+    background: white;
+    font-family: Arial, sans-serif;
+  }
+  
+  /* Remove the visibility hidden that was causing issues */
+  body * {
+    visibility: visible;
+  }
+  
+  .print-container {
+    display: block !important;
+    visibility: visible !important;
+  }
+  
+  .print-container * {
+    visibility: visible !important;
+  }
+  
+  @page {
+    size: ${pageSize};
+    margin: 1mm;
+    padding: 0;
+  }
+  
+  .print-label-70x15 {
+    width: 68mm;
+    height: 13mm;
+    display: flex;
+    align-items: center;
+    padding: 1mm;
+    border-radius:2px;
+    border: 2px solid black;
+    background: white;
+    font-family: Arial, sans-serif;
+    page-break-after: always;
+    box-sizing: border-box;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .print-qr-70x15 {
+    width: 11mm;
+    height: 11mm;
+    margin-right: 2mm;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .print-qr-70x15 svg {
+    width: 11mm !important;
+    height: 11mm !important;
+    display: block !important;
+    max-width: 11mm;
+    max-height: 11mm;
+  }
+  
+  .print-text-70x15 {
+    flex: 1;
+    text-align: center;
+    font-size: 7pt;
+    font-weight: bold;
+    word-break: break-all;
+    line-height: 1.1;
+    font-family: Arial, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  
+  .print-label-100x50 {
+    width: 98mm;
+    height: 48mm;
+    display: flex;
+    padding: 2mm;
+    border: 2px solid black;
+    border-radius:2px;
+    background: white;
+    font-family: Arial, sans-serif;
+    page-break-after: always;
+    box-sizing: border-box;
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .print-qr-100x50 {
+    width: 34mm;
+    height: 34mm;
+    margin-right: 3mm;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .print-qr-100x50 svg {
+  margin-top:2.5rem;
+    width: 34mm !important;
+    height: 34mm !important;
+    display: block !important;
+    max-width: 34mm;
+    max-height: 34mm;
+  }
+  
+  .print-content-100x50 {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    font-size: 9pt;
+    line-height: 1.2;
+    font-family: Arial, sans-serif;
+    overflow: hidden;
+  }
+  
+  .print-content-100x50 .part-number {
+    font-size: 10pt;
+    font-weight: bold;
+    margin-bottom: 1mm;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .print-content-100x50 .model {
+    font-size: 10pt;
+    font-weight: bold;
+    margin-bottom: 1mm;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .print-content-100x50 .location {
+  font-size: 10pt;
+    font-weight: bold;
+    margin-bottom: 1mm;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .print-content-100x50 .custom-date {
+    font-size: 6pt;
+    color: #666;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+/* Screen styles to hide print container */
+@media screen {
+  .print-container {
+    display: none !important;
+  }
+}
+</style>
+`;
+
+  return styles;
 };
 
 const PartsManagement = () => {
-  // Get user role from localStorage (mock for demo)
-  const [userRole, setUserRole] = useState("Admin");
-  const [isAdmin, setIsAdmin] = useState(true);
+  // Get user role from localStorage
+  const [userRole, setUserRole] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const [partNo, setPartNo] = useState("");
   const [model, setModel] = useState("");
   const [prefix, setPrefix] = useState("");
   const [storageLocation, setStorageLocation] = useState("");
-  const [parts, setParts] = useState([
-    {
-      _id: "1",
-      PartNumber: "SA0500F001",
-      Model: "Isam 550 Master",
-      Prefix: "T0515SAMA",
-      SerialNo: "T0515SAMA25090001",
-      StorageLocation: "Warehouse A",
-      createdAt: new Date().toISOString(),
-    },
-    {
-      _id: "2",
-      PartNumber: "SAMRP5A002",
-      Model: "I5RSP-Reaper self-propelled",
-      Prefix: "T_1I5RSPA",
-      SerialNo: "T2509I5RSPA001",
-      StorageLocation: "Warehouse B",
-      createdAt: new Date().toISOString(),
-    },
-  ]);
-  const [scanHistory, setScanHistory] = useState([
-    {
-      _id: "scan1",
-      textContent: "Sample QR Text",
-      scannedAt: new Date().toISOString(),
-      printed: true,
-      status: "printed",
-    },
-  ]);
+  const [parts, setParts] = useState([]);
+  const [scanHistory, setScanHistory] = useState([]);
   const [printHistory, setPrintHistory] = useState([]);
   const [tableView, setTableView] = useState("parts");
   const [editIndex, setEditIndex] = useState(null);
@@ -130,13 +256,452 @@ const PartsManagement = () => {
     SA0400F001: { model: "Isam 800 Pro", prefix: "T0418SAMA" },
     SA0700F004: { model: "Isam 550 Master (SCRG)", prefix: "T0515SAMB" },
     SA0700F003: { model: "Isam 450 Master (SCRG)", prefix: "T0714SAMB" },
-    // ADD NEW PART:
     SAMRP5A002: { model: "I5RSP-Reaper self-propelled", prefix: "T_1I5RSPA" },
+  };
+
+  // Function to convert React QRCode component to SVG string
+  const generateQRCodeString = (value, size = 256) => {
+    try {
+      const qrCodeElement = React.createElement(QRCode, {
+        value: value,
+        size: size,
+        style: { height: "auto", maxWidth: "100%", width: "100%" },
+        viewBox: `0 0 256 256`,
+      });
+
+      const svgString = renderToString(qrCodeElement);
+      return svgString;
+    } catch (error) {
+      console.error("Error generating QR code:", error);
+      // Fallback SVG
+      return `<svg width="${size}" height="${size}" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg">
+      <rect width="256" height="256" fill="white"/>
+      <text x="128" y="128" text-anchor="middle" fill="black" font-size="16">QR Error</text>
+    </svg>`;
+    }
+  };
+
+  // Modified createPrintableContent function to include comprehensive data in 100x50mm QR codes
+  const createPrintableContent = (
+    item,
+    quantity,
+    labelSize,
+    startSerial,
+    customYear,
+    customMonth
+  ) => {
+    const labels = [];
+    const copiesPerLabel = labelSize === "70x15" ? 2 : 1;
+
+    for (let i = 0; i < quantity; i++) {
+      for (let copy = 0; copy < copiesPerLabel; copy++) {
+        let content, qrValue;
+
+        if (item.textContent) {
+          // For text content
+          content = item.textContent;
+          qrValue = item.textContent;
+        } else {
+          // For part data
+          const currentSerial = startSerial
+            ? (parseInt(startSerial) + i).toString().padStart(3, "0")
+            : "001";
+          const prefix = item.Prefix || item.prefix || "";
+          const now = new Date();
+          const year = customYear || now.getFullYear().toString().slice(-2);
+          const month =
+            customMonth || (now.getMonth() + 1).toString().padStart(2, "0");
+
+          let serialNo;
+          if (prefix.includes("_")) {
+            const prefixWithDate = prefix.replace(/_/g, year + month);
+            serialNo = `${prefixWithDate}${currentSerial}`;
+          } else {
+            serialNo = `${prefix}${year}${month}${currentSerial}`;
+          }
+
+          content = serialNo;
+
+          // Different QR data based on label size
+          if (labelSize === "70x15") {
+            // For small labels, just store the serial number
+            qrValue = serialNo;
+          } else {
+            // For large labels (100x50), store comprehensive part information
+            const comprehensiveData = {
+              serialNo: serialNo,
+              partNumber: item.PartNumber || item.partNumber || "",
+              model: item.Model || item.model || "",
+              prefix: prefix,
+              storageLocation:
+                item.StorageLocation || item.storageLocation || "",
+              labelSize: labelSize,
+              printedDate: new Date().toISOString(),
+              customDate: customYear || customMonth ? `${year}/${month}` : null,
+            };
+            qrValue = JSON.stringify(comprehensiveData);
+          }
+        }
+
+        // Use react-qr-code converted to string
+        const qrSvg = generateQRCodeString(qrValue, 256);
+
+        if (labelSize === "70x15") {
+          labels.push(`
+          <div class="print-label-70x15">
+            <div class="print-qr-70x15">
+              ${qrSvg}
+            </div>
+            <div class="print-text-70x15">${content}</div>
+          </div>
+        `);
+        } else {
+          labels.push(`
+          <div class="print-label-100x50">
+            <div class="print-qr-100x50">
+              ${qrSvg}
+            </div>
+            <div class="print-content-100x50">
+              <div class="part-number">Part no: ${
+                item.textContent ||
+                item.PartNumber ||
+                item.partNumber ||
+                content
+              }</div>
+              ${
+                !item.textContent
+                  ? `
+                <div class="model">Model: ${
+                  item.Model || item.model || "N/A"
+                }</div>
+                <div class="location">Location: ${
+                  item.StorageLocation ||
+                  item.storageLocation ||
+                  "Not specified"
+                }</div>
+                ${
+                  customYear || customMonth
+                    ? `<div class="custom-date">Custom Date: ${year}/${month}</div>`
+                    : ""
+                }
+              `
+                  : ""
+              }
+            </div>
+          </div>
+        `);
+        }
+      }
+    }
+
+    return labels.join("");
+  };
+
+  // Enhanced QR code display function for scanned codes
+  const displayScannedQRData = (scannedText) => {
+    try {
+      // Try to parse as JSON (comprehensive data from 100x50mm labels)
+      const parsedData = JSON.parse(scannedText);
+
+      if (parsedData.serialNo && parsedData.partNumber) {
+        // This is comprehensive data from a 100x50mm label
+        return {
+          type: "comprehensive",
+          data: {
+            serialNo: parsedData.serialNo,
+            partNumber: parsedData.partNumber,
+            model: parsedData.model,
+            storageLocation: parsedData.storageLocation,
+            printedDate: parsedData.printedDate,
+            labelSize: parsedData.labelSize,
+            customDate: parsedData.customDate,
+          },
+        };
+      }
+    } catch (error) {
+      // Not JSON, treat as simple serial number or text
+      if (scannedText.match(/^T\d{4}(SAMA|SAMB)\d{7}$/)) {
+        // This looks like a serial number from 70x15mm label
+        return {
+          type: "serialNumber",
+          data: {
+            serialNo: scannedText,
+            // You could look up additional data from database using this serial number
+          },
+        };
+      } else {
+        // Plain text
+        return {
+          type: "text",
+          data: {
+            content: scannedText,
+          },
+        };
+      }
+    }
+  };
+
+  // React component to display scanned QR data
+  const ScannedDataDisplay = ({ scannedText }) => {
+    const qrData = displayScannedQRData(scannedText);
+
+    return (
+      <div className="bg-white p-4 rounded-lg border-2 border-gray-200">
+        {qrData.type === "comprehensive" && (
+          <div className="space-y-3">
+            <h3 className="text-lg font-bold text-green-600">
+              Part Information
+            </h3>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              
+              <div>
+                <span className="font-medium text-gray-600">Part Number:</span>
+                <div className="bg-blue-100 p-2 rounded font-bold">
+                  {qrData.data.partNumber}
+                </div>
+              </div>
+              <div>
+                <span className="font-medium text-gray-600">Model:</span>
+                <div className="bg-purple-100 p-2 rounded">
+                  {qrData.data.model}
+                </div>
+              </div>
+              <div>
+                <span className="font-medium text-gray-600">
+                  Storage Location:
+                </span>
+                <div className="bg-green-100 p-2 rounded">
+                  {qrData.data.storageLocation || "Not specified"}
+                </div>
+              </div>
+             
+              
+            </div>
+          </div>
+        )}
+
+        {qrData.type === "serialNumber" && (
+          <div className="space-y-3">
+            <h3 className="text-lg font-bold text-blue-600">Serial Number</h3>
+            <div className="font-mono bg-gray-100 p-3 rounded text-lg">
+              {qrData.data.serialNo}
+            </div>
+            <p className="text-sm text-gray-600">
+              From 70x15mm label - contains serial number only
+            </p>
+          </div>
+        )}
+
+        {qrData.type === "text" && (
+          <div className="space-y-3">
+            <h3 className="text-lg font-bold text-purple-600">Text Content</h3>
+            <div className="bg-purple-100 p-3 rounded">
+              {qrData.data.content}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Updated createQRData function for QR dialog
+  const createQRData = (item) => {
+    if (!item) return "";
+
+    if (item.textContent) {
+      return item.textContent;
+    }
+
+    // For the QR dialog, always show comprehensive data if available
+    const qrData = {
+      partNumber: item.PartNumber || item.partNumber || "",
+      model: item.Model || item.model || "",
+     
+      storageLocation: item.StorageLocation || item.storageLocation || "N/A",
+    };
+
+    return JSON.stringify(qrData);
+  };
+
+  // Enhanced execute print function
+  const executePrint = async () => {
+    try {
+      console.log("Starting print process...");
+
+      const printContent = createPrintableContent(
+        selectedPrintItem,
+        printQuantity,
+        labelSize,
+        serialStartFrom,
+        customYear,
+        customMonth
+      );
+
+      console.log(
+        "Print content generated:",
+        printContent.substring(0, 200) + "..."
+      );
+
+      // Create a new window for printing with exact dimensions
+      const printWindow = window.open("", "_blank", "width=800,height=600");
+
+      if (!printWindow) {
+        throw new Error(
+          "Could not open print window. Please check popup blockers."
+        );
+      }
+
+      const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Label Print</title>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          ${getPrintStyles(labelSize)}
+        </head>
+        <body>
+          <div class="print-container" style="display: block;">
+            ${printContent}
+          </div>
+          <script>
+            console.log('Print window loaded');
+            window.onload = function() {
+              console.log('Window loaded, preparing to print');
+              setTimeout(function() {
+                window.print();
+              }, 1000);
+            };
+            
+            window.onafterprint = function() {
+              console.log('Print dialog closed');
+              setTimeout(function() {
+                window.close();
+              }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+      console.log("Writing HTML to print window...");
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+
+      // Focus the print window
+      printWindow.focus();
+
+      // Wait for content to load then print
+      setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+
+        // Close window after printing
+        setTimeout(() => {
+          printWindow.close();
+        }, 1000);
+      }, 1500);
+
+      // Handle text content printing differently
+      if (selectedPrintItem?.textContent) {
+        const printJob = {
+          textContent: selectedPrintItem.textContent,
+          quantity: printQuantity,
+          totalLabels: printQuantity * (labelSize === "70x15" ? 2 : 1),
+          labelSize: labelSize,
+          printedAt: new Date().toISOString(),
+        };
+
+        setPrintHistory((prev) => [printJob, ...prev]);
+        setSuccess(
+          `Text "${selectedPrintItem.textContent}" printed! ${printJob.totalLabels} labels`
+        );
+      } else {
+        // Original part printing logic with year/month override
+        const startSerial = parseInt(serialStartFrom || "00001");
+        const endSerial = startSerial + printQuantity - 1;
+        const prefix =
+          selectedPrintItem?.Prefix || selectedPrintItem?.prefix || "";
+
+        // Generate starting and ending serial numbers with custom year/month
+        const now = new Date();
+        const year = customYear || now.getFullYear().toString().slice(-2);
+        const month =
+          customMonth || (now.getMonth() + 1).toString().padStart(2, "0");
+
+        const startSerialNo = `${prefix}${year}${month}${String(
+          startSerial
+        ).padStart(3, "0")}`;
+        const endSerialNo = `${prefix}${year}${month}${String(
+          endSerial
+        ).padStart(3, "0")}`;
+
+        // Calculate total labels based on label size
+        let totalLabels = printQuantity;
+        if (labelSize === "70x15") {
+          totalLabels = printQuantity * 2;
+        }
+
+        // Prepare print job data
+        const printJobData = {
+          partNumber:
+            selectedPrintItem?.PartNumber || selectedPrintItem?.partNumber,
+          model: selectedPrintItem?.Model || selectedPrintItem?.model,
+          prefix: prefix,
+          startingSerialNo: startSerialNo,
+          endingSerialNo: endSerialNo,
+          quantity: printQuantity,
+          totalLabels: totalLabels,
+          labelSize: labelSize,
+          copiesPerSerial: labelSize === "70x15" ? 2 : 1,
+          printedAt: new Date().toISOString(),
+          partId: selectedPrintItem?._id || selectedPrintItem?.id,
+          storageLocation:
+            selectedPrintItem?.StorageLocation ||
+            selectedPrintItem?.storageLocation ||
+            "",
+          customYear: customYear,
+          customMonth: customMonth,
+        };
+
+        // Save print job to database
+        try {
+          const response = await api.post("/api/addPrintJob", printJobData);
+          if (response.data.success) {
+            setPrintHistory((prev) => [
+              response.data.data || printJobData,
+              ...prev,
+            ]);
+          }
+        } catch (error) {
+          console.error("Error saving print job:", error);
+        }
+
+        setSuccess(
+          `Print job completed! ${totalLabels} labels (Serials: ${startSerialNo} to ${endSerialNo}${
+            labelSize === "70x15" ? ", 2 copies each" : ""
+          }${customYear || customMonth ? " - Custom Date Used" : ""})`
+        );
+      }
+    } catch (error) {
+      console.error("Error printing labels:", error);
+      setError(`Failed to print labels: ${error.message}`);
+    } finally {
+      setPrintDialog(false);
+      setSelectedPrintItem(null);
+      setPrintQuantity(1);
+      setSerialStartFrom("00001");
+      setLabelSize("70x15");
+      setIsManualSerialEntry(false);
+      setCustomYear("");
+      setCustomMonth("");
+      setShowYearMonthOverride(false);
+    }
   };
 
   // Check if it's December or if user wants to override year/month
   const checkDecemberOverride = () => {
-    const currentMonth = new Date().getMonth() + 1; // 1-based month
+    const currentMonth = new Date().getMonth() + 1;
     return currentMonth === 12 || showYearMonthOverride;
   };
 
@@ -212,7 +777,6 @@ const PartsManagement = () => {
       return "00001";
     }
 
-    // Find all print history entries with the same prefix
     const samePrefixPrints = printHistory.filter(
       (print) => print.prefix === prefix
     );
@@ -221,24 +785,19 @@ const PartsManagement = () => {
       return "00001";
     }
 
-    // Get the current or custom year and month for comparison
     const now = new Date();
     const currentYear = customYear || now.getFullYear().toString().slice(-2);
     const currentMonth =
       customMonth || (now.getMonth() + 1).toString().padStart(2, "0");
     const currentYearMonth = currentYear + currentMonth;
 
-    // Find the highest ending serial number for the current month/year
     let highestSerial = 0;
 
     samePrefixPrints.forEach((print) => {
       if (print.endingSerialNo) {
-        // Extract the serial number from the ending serial (last 3 digits)
         const serialMatch = print.endingSerialNo.match(/\d{3}$/);
         if (serialMatch) {
           const serialNum = parseInt(serialMatch[0]);
-
-          // Check if this print is from current year/month
           const printYearMonth = print.endingSerialNo.slice(
             prefix.length,
             prefix.length + 4
@@ -254,286 +813,8 @@ const PartsManagement = () => {
       }
     });
 
-    // Return the next serial number
     const nextSerial = (highestSerial + 1).toString().padStart(3, "0");
     return nextSerial;
-  };
-
-  // Print functionality using window.print()
-  const printLabels = (printData) => {
-    // Create a new window for printing
-    const printWindow = window.open("", "_blank");
-
-    // Calculate dimensions for different label sizes
-    const labelDimensions = {
-      "70x15": { width: "70mm", height: "15mm", cols: 2, rows: 17 }, // Avery 5160 style
-      "100x50": { width: "100mm", height: "50mm", cols: 2, rows: 5 }, // Larger labels
-    };
-
-    const dims =
-      labelDimensions[printData.labelSize] || labelDimensions["70x15"];
-
-    // Generate the HTML content for printing
-    let printContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Label Print</title>
-        <style>
-          @media print {
-            @page {
-              size: A4;
-              margin: 0.5in;
-            }
-            body {
-              margin: 0;
-              padding: 0;
-              font-family: Arial, sans-serif;
-            }
-            .print-container {
-              width: 100%;
-              display: grid;
-              grid-template-columns: repeat(${dims.cols}, 1fr);
-              gap: 2mm;
-              page-break-inside: avoid;
-            }
-            .label {
-              width: ${dims.width};
-              height: ${dims.height};
-              display: flex;
-              align-items: center;
-              border: 1px solid #ccc;
-              box-sizing: border-box;
-              padding: 1mm;
-              background: white;
-              overflow: hidden;
-              break-inside: avoid;
-            }
-            .qr-code {
-              flex-shrink: 0;
-              margin-right: 2mm;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-            }
-            .qr-code svg {
-              width: ${printData.labelSize === "70x15" ? "12mm" : "20mm"};
-              height: ${printData.labelSize === "70x15" ? "12mm" : "20mm"};
-            }
-            .content {
-              flex: 1;
-              display: flex;
-              flex-direction: column;
-              justify-content: center;
-              align-items: ${
-                printData.labelSize === "70x15" ? "center" : "flex-start"
-              };
-              text-align: ${
-                printData.labelSize === "70x15" ? "center" : "left"
-              };
-              overflow: hidden;
-            }
-            .serial {
-              font-weight: bold;
-              font-family: 'Courier New', monospace;
-              font-size: ${printData.labelSize === "70x15" ? "9pt" : "11pt"};
-              line-height: 1.1;
-              margin: 0;
-              word-break: break-all;
-            }
-            .part-info {
-              font-size: ${printData.labelSize === "70x15" ? "6pt" : "8pt"};
-              line-height: 1.1;
-              margin-top: 1mm;
-            }
-            .model {
-              font-weight: bold;
-              margin: 0.5mm 0;
-            }
-            .location {
-              font-style: italic;
-              color: #555;
-              margin: 0;
-            }
-          }
-          @media screen {
-            body {
-              font-family: Arial, sans-serif;
-              padding: 20px;
-              background: #f0f0f0;
-            }
-            .print-container {
-              display: grid;
-              grid-template-columns: repeat(${dims.cols}, 1fr);
-              gap: 10px;
-              max-width: 800px;
-              margin: 0 auto;
-            }
-            .label {
-              width: 100%;
-              height: ${printData.labelSize === "70x15" ? "60px" : "120px"};
-              display: flex;
-              align-items: center;
-              border: 2px solid #333;
-              background: white;
-              padding: 8px;
-              box-sizing: border-box;
-              border-radius: 4px;
-              box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            }
-            .qr-code {
-              margin-right: 12px;
-              flex-shrink: 0;
-            }
-            .qr-code svg {
-              width: ${printData.labelSize === "70x15" ? "44px" : "80px"};
-              height: ${printData.labelSize === "70x15" ? "44px" : "80px"};
-              border: 1px solid #ddd;
-            }
-            .content {
-              flex: 1;
-              display: flex;
-              flex-direction: column;
-              justify-content: center;
-              align-items: ${
-                printData.labelSize === "70x15" ? "center" : "flex-start"
-              };
-              text-align: ${
-                printData.labelSize === "70x15" ? "center" : "left"
-              };
-            }
-            .serial {
-              font-weight: bold;
-              font-family: 'Courier New', monospace;
-              font-size: ${printData.labelSize === "70x15" ? "14px" : "16px"};
-              margin: 0;
-              word-break: break-all;
-            }
-            .part-info {
-              font-size: ${printData.labelSize === "70x15" ? "10px" : "12px"};
-              line-height: 1.3;
-              margin-top: 4px;
-            }
-            .model {
-              font-weight: bold;
-              margin: 2px 0;
-            }
-            .location {
-              font-style: italic;
-              color: #666;
-              margin: 0;
-            }
-            .print-instructions {
-              text-align: center;
-              margin-bottom: 20px;
-              padding: 15px;
-              background: #e3f2fd;
-              border-radius: 8px;
-              border-left: 4px solid #2196f3;
-            }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="print-instructions" style="display: none;">
-          <h3>Print Instructions</h3>
-          <p>Labels designed for ${printData.labelSize}mm paper</p>
-          <p>Set printer to: Actual Size (100%), No scaling</p>
-          <p>Page setup: A4, ${dims.cols} columns x ${dims.rows} rows</p>
-        </div>
-        <div class="print-container">
-    `;
-
-    // Generate QR code SVG with actual QR pattern
-    const generateQRCodeSVG = (value) => {
-      // More realistic QR code pattern
-      const patterns = [
-        [1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1],
-        [1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 0, 1],
-        [1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 0, 1],
-        [1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1],
-        [1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1],
-        [1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 1],
-        [1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1],
-        [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0],
-        [1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 1, 0, 1],
-      ];
-
-      let squares = "";
-      for (let row = 0; row < patterns.length; row++) {
-        for (let col = 0; col < patterns[row].length; col++) {
-          if (patterns[row][col]) {
-            squares += `<rect x="${col * 5 + 5}" y="${
-              row * 5 + 5
-            }" width="4" height="4" fill="black"/>`;
-          }
-        }
-      }
-
-      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 90">
-        <rect width="90" height="90" fill="white" stroke="#ccc" stroke-width="0.5"/>
-        ${squares}
-        <text x="45" y="85" text-anchor="middle" font-size="3" font-family="Arial" fill="#666">${value.substring(
-          0,
-          12
-        )}</text>
-      </svg>`;
-    };
-
-    // Generate labels based on print data
-    for (let i = 0; i < printData.totalLabels; i++) {
-      const labelContent =
-        printData.textContent ||
-        printData.serialNumbers?.[Math.floor(i / printData.copiesPerSerial)] ||
-        "SAMPLE001";
-      const qrValue = printData.textContent || labelContent;
-
-      printContent += `
-        <div class="label">
-          <div class="qr-code">
-            ${generateQRCodeSVG(qrValue)}
-          </div>
-          <div class="content">
-            <div class="serial">${labelContent}</div>
-            ${
-              !printData.textContent && printData.labelSize !== "70x15"
-                ? `
-              <div class="part-info">
-                <div class="model">Part: ${(
-                  printData.partNumber || "N/A"
-                ).substring(0, 15)}</div>
-                <div class="model">Model: ${(
-                  printData.model || "N/A"
-                ).substring(0, 20)}</div>
-                <div class="location">${(
-                  printData.storageLocation || "No location"
-                ).substring(0, 15)}</div>
-              </div>
-            `
-                : ""
-            }
-          </div>
-        </div>
-      `;
-    }
-
-    printContent += `
-        </div>
-      </body>
-      </html>
-    `;
-
-    // Write content to the new window and print
-    printWindow.document.write(printContent);
-    printWindow.document.close();
-
-    // Wait for content to load then print
-    printWindow.onload = () => {
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-      }, 1000);
-    };
   };
 
   // Delete scan entry function
@@ -547,19 +828,24 @@ const PartsManagement = () => {
     }
 
     try {
-      setScanHistory((prev) => prev.filter((scan) => scan._id !== scanId));
-      setSuccess("Scan entry deleted successfully!");
-      setTimeout(() => setSuccess(""), 3000);
+      const response = await api.delete(`/api/deleteScanEntry/${scanId}`);
+
+      if (response.data.success) {
+        setScanHistory((prev) => prev.filter((scan) => scan._id !== scanId));
+        setSuccess("Scan entry deleted successfully!");
+        setTimeout(() => setSuccess(""), 3000);
+      } else {
+        setError("Failed to delete scan entry");
+      }
     } catch (err) {
       console.error("Error deleting scan entry:", err);
-      setError("Failed to delete scan entry");
+      setError(err.response?.data?.message || "Failed to delete scan entry");
       setTimeout(() => setError(""), 3000);
     }
   };
 
   // Logout function
   const handleLogout = () => {
-    // Clear user data from localStorage
     localStorage.removeItem("user");
     localStorage.removeItem("token");
     localStorage.removeItem("authToken");
@@ -568,7 +854,20 @@ const PartsManagement = () => {
   };
 
   useEffect(() => {
-    // Mock data initialization
+    const userData = localStorage.getItem("user");
+    if (userData) {
+      try {
+        const user = JSON.parse(userData);
+        setUserRole(user.role);
+        setIsAdmin(user.role === "Admin");
+      } catch (error) {
+        console.error("Error parsing user data:", error);
+        setIsAdmin(false);
+      }
+    } else {
+      setIsAdmin(false);
+    }
+
     fetchParts();
     fetchPrintHistory();
     fetchScanHistory();
@@ -578,20 +877,41 @@ const PartsManagement = () => {
     setTableLoading(true);
     setError("");
     try {
-      // Mock API call
-      setTimeout(() => {
-        setTableLoading(false);
-      }, 500);
+      const response = await api.get("/api/getModel", {
+        params: {
+          search: searchTerm,
+          limit: 100,
+          sortBy: "createdAt",
+          sortOrder: "desc",
+        },
+      });
+
+      if (response.data.success) {
+        setParts(response.data.data);
+      } else {
+        setError("Failed to fetch parts");
+      }
     } catch (err) {
       console.error("Error fetching parts:", err);
-      setError("Failed to fetch parts");
+      setError(err.response?.data?.message || "Failed to fetch parts");
+    } finally {
       setTableLoading(false);
     }
   };
 
   const fetchPrintHistory = async () => {
     try {
-      // Mock implementation
+      const response = await api.get("/api/getPrintHistory", {
+        params: {
+          limit: 100,
+          sortBy: "printedAt",
+          sortOrder: "desc",
+        },
+      });
+
+      if (response.data.success) {
+        setPrintHistory(response.data.data);
+      }
     } catch (err) {
       console.error("Error fetching print history:", err);
     }
@@ -626,7 +946,17 @@ const PartsManagement = () => {
 
   const fetchScanHistory = async () => {
     try {
-      // Mock implementation
+      const response = await api.get("/api/getScanHistory", {
+        params: {
+          limit: 100,
+          sortBy: "scannedAt",
+          sortOrder: "desc",
+        },
+      });
+
+      if (response.data.success) {
+        setScanHistory(response.data.data);
+      }
     } catch (err) {
       console.error("Error fetching scan history:", err);
     }
@@ -645,7 +975,6 @@ const PartsManagement = () => {
       const textToPrint = scanInput.trim();
 
       const scanEntryData = {
-        _id: Date.now().toString(),
         textContent: textToPrint,
         scannedAt: new Date().toISOString(),
         printed: false,
@@ -653,45 +982,55 @@ const PartsManagement = () => {
         status: "processing",
       };
 
-      setScanHistory((prev) => [scanEntryData, ...prev]);
+      const response = await api.post("/api/addScanEntry", scanEntryData);
 
-      // Auto-print after 1 second delay
-      setTimeout(async () => {
-        try {
-          // Update scan entry status to printed
-          setScanHistory((prev) =>
-            prev.map((item) =>
-              item._id === scanEntryData._id
-                ? { ...item, printed: true, status: "printed" }
-                : item
-            )
-          );
+      if (response.data.success) {
+        const savedScanEntry = response.data.data;
+        setScanHistory((prev) => [savedScanEntry, ...prev]);
 
-          // Add to print history
-          const printJob = {
-            _id: Date.now().toString(),
-            textContent: textToPrint,
-            quantity: 1,
-            totalLabels: 2,
-            labelSize: "70x15",
-            copiesPerSerial: 2,
-            printedAt: new Date().toISOString(),
-            scanEntryId: scanEntryData._id,
-          };
+        setTimeout(async () => {
+          try {
+            await api.put(`/api/updateScanEntry/${savedScanEntry._id}`, {
+              printed: true,
+              status: "printed",
+            });
 
-          setPrintHistory((prev) => [printJob, ...prev]);
+            setScanHistory((prev) =>
+              prev.map((item) =>
+                item._id === savedScanEntry._id
+                  ? { ...item, printed: true, status: "printed" }
+                  : item
+              )
+            );
 
-          // Actually print the labels
-          printLabels(printJob);
-        } catch (updateError) {
-          console.error("Error updating scan entry:", updateError);
-        }
-      }, 1000);
+            const printJob = {
+              textContent: textToPrint,
+              quantity: 1,
+              totalLabels: 2,
+              labelSize: "70x15",
+              printedAt: new Date().toISOString(),
+              scanEntryId: savedScanEntry._id,
+            };
 
-      setSuccess(
-        `Text "${textToPrint}" scanned and will be printed (2 labels, 70x15mm)!`
-      );
-      setTimeout(() => setSuccess(""), 3000);
+            const printResponse = await api.post("/api/addPrintJob", printJob);
+            if (printResponse.data.success) {
+              setPrintHistory((prev) => [
+                printResponse.data.data || printJob,
+                ...prev,
+              ]);
+            }
+          } catch (updateError) {
+            console.error("Error updating scan entry:", updateError);
+          }
+        }, 1000);
+
+        setSuccess(
+          `Text "${textToPrint}" scanned and will be printed (2 labels, 70x15mm)!`
+        );
+        setTimeout(() => setSuccess(""), 3000);
+      } else {
+        setError("Failed to save scan entry to database");
+      }
     } catch (err) {
       console.error("Error saving scan entry:", err);
       setError("Failed to process and save scan entry");
@@ -702,7 +1041,6 @@ const PartsManagement = () => {
     }
   };
 
-  // Updated scan history table to include delete button
   const renderScanHistoryTable = () => (
     <table className="w-full">
       <thead className="bg-gray-100/80">
@@ -791,7 +1129,6 @@ const PartsManagement = () => {
     </table>
   );
 
-  // Add refresh button functionality for scan history
   const handleRefreshScanHistory = async () => {
     setTableLoading(true);
     try {
@@ -817,34 +1154,59 @@ const PartsManagement = () => {
     setSuccess("");
 
     try {
-      const newPart = {
-        _id: Date.now().toString(),
-        PartNumber: partNo,
-        Model: model,
-        Prefix: prefix,
-        StorageLocation: storageLocation,
-        SerialNo: generateSerialNo(prefix, customYear, customMonth),
-        createdAt: new Date().toISOString(),
-      };
+      let response;
 
       if (editIndex !== null) {
+        response = await api.put(`/api/parts/${editId}`, {
+          PartNumber: partNo,
+          Model: model,
+          Prefix: prefix,
+          StorageLocation: storageLocation,
+        });
+
         setParts((prev) =>
           prev.map((part) =>
-            part._id === editId ? { ...part, ...newPart, _id: editId } : part
+            part._id === editId
+              ? {
+                  ...part,
+                  PartNumber: partNo,
+                  Model: model,
+                  Prefix: prefix,
+                  StorageLocation: storageLocation,
+                }
+              : part
           )
         );
       } else {
-        setParts((prev) => [newPart, ...prev]);
+        response = await api.post("/api/addModels", {
+          PartNumber: partNo,
+          Model: model,
+          Prefix: prefix,
+          StorageLocation: storageLocation,
+        });
+
+        setParts((prev) => [response.data.data, ...prev]);
       }
 
-      setSuccess(
-        editIndex !== null
-          ? `Part updated successfully! (Serial No: ${newPart.SerialNo})`
-          : `Part saved successfully! (Serial No: ${newPart.SerialNo})`
-      );
-      resetForm();
+      if (response.data.success) {
+        const serialNoInfo = response.data.data.SerialNo
+          ? ` (Serial No: ${response.data.data.SerialNo})`
+          : "";
+        setSuccess(
+          editIndex !== null
+            ? `Part updated successfully!${serialNoInfo}`
+            : `Part saved successfully!${serialNoInfo}`
+        );
+        resetForm();
+      } else {
+        setError(response.data.message || "Failed to save part");
+      }
     } catch (error) {
-      setError("Failed to save part. Please try again.");
+      if (error.response?.data?.message) {
+        setError(error.response.data.message);
+      } else {
+        setError("Failed to save part. Please try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -878,165 +1240,36 @@ const PartsManagement = () => {
     }
 
     try {
-      setParts((prev) => prev.filter((part) => part._id !== partId));
-      setSuccess("Part deleted successfully!");
+      const response = await api.delete(`/api/parts/${partId}`);
+
+      if (response.data.success) {
+        setParts((prev) => prev.filter((part) => part._id !== partId));
+        setSuccess("Part deleted successfully!");
+      }
     } catch (err) {
       console.error("Error deleting part:", err);
-      setError("Failed to delete part");
+      setError(err.response?.data?.message || "Failed to delete part");
     }
   };
 
   const handlePrintClick = (item) => {
     setSelectedPrintItem(item);
-
-    // Get the prefix for this item
     const itemPrefix = item?.Prefix || item?.prefix || "";
-
-    // Calculate the next serial number automatically
     const nextSerial = getNextSerialNumber(itemPrefix);
-
-    // Set the starting serial number
     setSerialStartFrom(nextSerial);
-
-    // Check if this is the first time printing this prefix (no history)
     const hasHistory = printHistory.some(
       (print) => print.prefix === itemPrefix
     );
     setIsManualSerialEntry(!hasHistory);
-
-    // Reset custom year/month when opening print dialog
     setCustomYear("");
     setCustomMonth("");
     setShowYearMonthOverride(checkDecemberOverride());
-
     setPrintDialog(true);
   };
 
   const handleQrClick = (item) => {
     setSelectedQrItem(item);
     setQrDialog(true);
-  };
-
-  const executePrint = async () => {
-    try {
-      // Handle text content printing differently
-      if (selectedPrintItem?.textContent) {
-        const printJob = {
-          _id: Date.now().toString(),
-          textContent: selectedPrintItem.textContent,
-          quantity: printQuantity,
-          totalLabels: printQuantity * (labelSize === "70x15" ? 2 : 1),
-          labelSize: labelSize,
-          copiesPerSerial: labelSize === "70x15" ? 2 : 1,
-          printedAt: new Date().toISOString(),
-        };
-
-        setPrintHistory((prev) => [printJob, ...prev]);
-
-        // Actually print the labels
-        printLabels(printJob);
-
-        setSuccess(
-          `Text "${selectedPrintItem.textContent}" printed! ${printJob.totalLabels} labels`
-        );
-
-        setPrintDialog(false);
-        setSelectedPrintItem(null);
-        setPrintQuantity(1);
-        setSerialStartFrom("00001");
-        setLabelSize("70x15");
-        setIsManualSerialEntry(false);
-        return;
-      }
-
-      // Original part printing logic with year/month override
-      const startSerial = parseInt(serialStartFrom || "00001");
-      const endSerial = startSerial + printQuantity - 1;
-      const prefix =
-        selectedPrintItem?.Prefix || selectedPrintItem?.prefix || "";
-
-      // Generate starting and ending serial numbers with custom year/month
-      const now = new Date();
-      const year = customYear || now.getFullYear().toString().slice(-2);
-      const month =
-        customMonth || (now.getMonth() + 1).toString().padStart(2, "0");
-
-      const serialNumbers = [];
-      for (let i = startSerial; i <= endSerial; i++) {
-        // Check if prefix contains underscores
-        if (prefix.includes("_")) {
-          // Replace underscores with year and month, then add serial
-          const prefixWithDate = prefix.replace(/_/g, year + month);
-          serialNumbers.push(`${prefixWithDate}${String(i).padStart(3, "0")}`);
-        } else {
-          // No underscores: append year + month + serial
-          serialNumbers.push(
-            `${prefix}${year}${month}${String(i).padStart(3, "0")}`
-          );
-        }
-      }
-
-      const startSerialNo = serialNumbers[0];
-      const endSerialNo = serialNumbers[serialNumbers.length - 1];
-
-      // Calculate total labels based on label size
-      let totalLabels = printQuantity;
-      let copiesPerSerial = 1;
-      if (labelSize === "70x15") {
-        totalLabels = printQuantity * 2;
-        copiesPerSerial = 2;
-      }
-
-      // Prepare print job data
-      const printJobData = {
-        _id: Date.now().toString(),
-        partNumber:
-          selectedPrintItem?.PartNumber || selectedPrintItem?.partNumber,
-        model: selectedPrintItem?.Model || selectedPrintItem?.model,
-        prefix: prefix,
-        startingSerialNo: startSerialNo,
-        endingSerialNo: endSerialNo,
-        serialNumbers: serialNumbers,
-        quantity: printQuantity,
-        totalLabels: totalLabels,
-        labelSize: labelSize,
-        copiesPerSerial: copiesPerSerial,
-        printedAt: new Date().toISOString(),
-        partId: selectedPrintItem?._id || selectedPrintItem?.id,
-        storageLocation:
-          selectedPrintItem?.StorageLocation ||
-          selectedPrintItem?.storageLocation ||
-          "",
-        customYear: customYear,
-        customMonth: customMonth,
-      };
-
-      // Add to local print history
-      setPrintHistory((prev) => [printJobData, ...prev]);
-
-      // Actually print the labels
-      printLabels(printJobData);
-
-      setSuccess(
-        `Print job completed! ${totalLabels} labels (Serials: ${startSerialNo} to ${endSerialNo}${
-          labelSize === "70x15" ? ", 2 copies each" : ""
-        }${customYear || customMonth ? " - Custom Date Used" : ""})`
-      );
-    } catch (error) {
-      console.error("Error processing print job:", error);
-      setError("Print job failed");
-    } finally {
-      setPrintDialog(false);
-      setSelectedPrintItem(null);
-      // Reset form
-      setPrintQuantity(1);
-      setSerialStartFrom("00001");
-      setLabelSize("70x15");
-      setIsManualSerialEntry(false);
-      setCustomYear("");
-      setCustomMonth("");
-      setShowYearMonthOverride(false);
-    }
   };
 
   useEffect(() => {
@@ -1056,37 +1289,9 @@ const PartsManagement = () => {
       part.Prefix?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  // Simplified QR data function
-  const createQRData = (item) => {
-    if (!item) return "";
-
-    // If it's a scan history item with textContent, return just the text
-    if (item.textContent) {
-      return item.textContent;
-    }
-
-    // For part data, return the part number or the full JSON
-    if (item.PartNumber || item.partNumber) {
-      return item.PartNumber || item.partNumber;
-    }
-
-    // Fallback for complex part data
-    const qrData = {
-      partNumber: item.PartNumber || item.partNumber || "",
-      model: item.Model || item.model || "",
-      serialNo: item.SerialNo || item.serialNo || "N/A",
-      prefix: item.Prefix || item.prefix || "",
-      storageLocation: item.StorageLocation || item.storageLocation || "N/A",
-    };
-
-    return JSON.stringify(qrData);
-  };
-
-  // Generate preview serial number with custom year/month
   const getPreviewSerialNo = () => {
     if (!selectedPrintItem) return `T0515SAMA25090001`;
 
-    // Handle text content
     if (selectedPrintItem.textContent) {
       return selectedPrintItem.textContent;
     }
@@ -1099,13 +1304,10 @@ const PartsManagement = () => {
       customMonth || (now.getMonth() + 1).toString().padStart(2, "0");
     const serial = (serialStartFrom || "00001").padStart(3, "0");
 
-    // Check if prefix contains underscores
     if (prefix.includes("_")) {
-      // Replace underscores with year and month, then add serial
       const prefixWithDate = prefix.replace(/_/g, year + month);
       return `${prefixWithDate}${serial}`;
     } else {
-      // No underscores: append year + month + serial
       return `${prefix}${year}${month}${serial}`;
     }
   };
@@ -1155,12 +1357,10 @@ const PartsManagement = () => {
                 />
               </button>
 
-              {/* User Role Indicator */}
               <div className="bg-blue-100 text-blue-800 px-3 py-2 rounded-lg font-medium text-sm">
                 {userRole || "User"}
               </div>
 
-              {/* Logout Button */}
               <button
                 onClick={handleLogout}
                 className="bg-gradient-to-r from-red-500 to-red-600 text-white p-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200 hover:-translate-y-1 flex items-center space-x-2"
@@ -1234,7 +1434,6 @@ const PartsManagement = () => {
               </div>
 
               <div className="p-6">
-                {/* Single Row Form */}
                 <div className="flex flex-col lg:flex-row gap-4 items-end">
                   <div className="flex-1">
                     <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1334,7 +1533,6 @@ const PartsManagement = () => {
                   </div>
                 </div>
 
-                {/* Auto-fill indicator */}
                 {prefix && (
                   <div className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4">
                     <div className="flex items-start space-x-3">
@@ -1573,7 +1771,6 @@ const PartsManagement = () => {
                             >
                               <Printer className="h-4 w-4" />
                             </button>
-                            {/* Admin-only actions */}
                             {isAdmin && (
                               <>
                                 <button
@@ -1602,7 +1799,6 @@ const PartsManagement = () => {
                 </table>
               )
             ) : tableView === "scans" ? (
-              // Scan History Table - Updated with delete button
               scanHistory.length === 0 ? (
                 <div className="text-center py-16">
                   <div className="bg-gray-100 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
@@ -1619,8 +1815,7 @@ const PartsManagement = () => {
               ) : (
                 renderScanHistoryTable()
               )
-            ) : // Print History Table - Updated for text content
-            printHistory.length === 0 ? (
+            ) : printHistory.length === 0 ? (
               <div className="text-center py-16">
                 <div className="bg-gray-100 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
                   <Printer className="h-10 w-10 text-gray-400" />
@@ -1911,7 +2106,7 @@ const PartsManagement = () => {
         </div>
       )}
 
-      {/* Print Dialog - Enhanced with Year/Month Override */}
+      {/* Enhanced Print Dialog */}
       {printDialog && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-2xl shadow-2xl max-w-7xl w-full h-[85vh] flex flex-col overflow-hidden">
@@ -1932,7 +2127,6 @@ const PartsManagement = () => {
             <div className="flex flex-1 min-h-0">
               {/* Left Side - Form Content */}
               <div className="flex-1 p-6 overflow-y-auto">
-                {/* Year/Month Override Alert for December */}
                 {checkDecemberOverride() && !selectedPrintItem?.textContent && (
                   <div className="mb-4 bg-yellow-50 border border-yellow-200 rounded-xl p-3">
                     <div className="flex items-start space-x-3">
@@ -2010,7 +2204,6 @@ const PartsManagement = () => {
                       </select>
                     </div>
 
-                    {/* Custom Year Input */}
                     {!selectedPrintItem?.textContent && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -2045,7 +2238,6 @@ const PartsManagement = () => {
                       </div>
                     )}
 
-                    {/* Custom Month Input */}
                     {!selectedPrintItem?.textContent && (
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -2082,7 +2274,6 @@ const PartsManagement = () => {
                     )}
                   </div>
 
-                  {/* Custom Date Warning */}
                   {(customYear || customMonth) &&
                     !selectedPrintItem?.textContent && (
                       <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
@@ -2132,7 +2323,6 @@ const PartsManagement = () => {
                 <div className="flex justify-center items-center flex-1">
                   {labelSize === "70x15" ? (
                     <div className="w-80 h-20 border-2 border-gray-800 flex items-center bg-white p-2 shadow-lg">
-                      {/* QR Code on Left */}
                       <div className="flex-shrink-0 mr-4">
                         <QRCode
                           value={
@@ -2143,7 +2333,6 @@ const PartsManagement = () => {
                           viewBox={`0 0 256 256`}
                         />
                       </div>
-                      {/* Content on Right */}
                       <div className="flex-1 flex flex-col justify-center items-center text-center">
                         <div className="font-bold text-lg font-mono">
                           {selectedPrintItem?.textContent ||
@@ -2153,7 +2342,6 @@ const PartsManagement = () => {
                     </div>
                   ) : (
                     <div className="w-96 h-48 border-2 border-gray-800 flex bg-white p-3 shadow-lg">
-                      {/* QR Code on Left */}
                       <div className="flex-shrink-0 mr-4 flex items-center">
                         <QRCode
                           value={
@@ -2164,7 +2352,6 @@ const PartsManagement = () => {
                           viewBox={`0 0 256 256`}
                         />
                       </div>
-                      {/* Details on Right */}
                       <div className="flex-1 flex flex-col justify-center text-left text-sm space-y-2">
                         <div className="font-bold text-md">
                           <strong>
