@@ -22,6 +22,16 @@ import {
   Calendar,
 } from "lucide-react";
 
+import {
+  Document,
+  Page,
+  Text,
+  View,
+  StyleSheet,
+  PDFDownloadLink,
+  pdf,
+} from "@react-pdf/renderer";
+
 import QRCode from "react-qr-code";
 
 import { api } from "./apiConfig";
@@ -73,8 +83,8 @@ const getPrintStyles = (labelSize) => {
     height: 13mm;
     display: flex;
     align-items: center;
-    padding: 1mm;
-    border-radius:2px;
+    padding: 1mm 3mm;
+    border-radius: 5px;
     border: 2px solid black;
     background: white;
     font-family: Arial, sans-serif;
@@ -82,47 +92,49 @@ const getPrintStyles = (labelSize) => {
     box-sizing: border-box;
     position: relative;
     overflow: hidden;
-  }
-  
-  .print-qr-70x15 {
-    width: 11mm;
-    height: 11mm;
-    margin-right: 2mm;
+    justify-content: space-between;
+}
+
+.print-qr-70x15 {
+    width: 10mm;
+    height: 10mm;
+    margin-left: 1mm;
     flex-shrink: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-  }
-  
-  .print-qr-70x15 svg {
-    width: 11mm !important;
-    height: 11mm !important;
+}
+
+.print-qr-70x15 svg {
+    width: 10mm !important;
+    height: 10mm !important;
     display: block !important;
-    max-width: 11mm;
-    max-height: 11mm;
-  }
-  
-  .print-text-70x15 {
+    max-width: 10mm;
+    max-height: 10mm;
+}
+
+.print-text-70x15 {
     flex: 1;
     text-align: center;
-    font-size: 7pt;
+    font-size: 8pt;
     font-weight: bold;
     word-break: break-all;
-    line-height: 1.1;
+    line-height: 1.2;
     font-family: Arial, sans-serif;
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: hidden;
-  }
+    padding: 0 2mm;
+}
   
   .print-label-100x50 {
-    width: 98mm;
+    width: 100mm;
     height: 48mm;
     display: flex;
     padding: 2mm;
     border: 2px solid black;
-    border-radius:2px;
+    border-radius:10px;
     background: white;
     font-family: Arial, sans-serif;
     page-break-after: always;
@@ -453,7 +465,6 @@ const PartsManagement = () => {
               Part Information
             </h3>
             <div className="grid grid-cols-2 gap-3 text-sm">
-              
               <div>
                 <span className="font-medium text-gray-600">Part Number:</span>
                 <div className="bg-blue-100 p-2 rounded font-bold">
@@ -474,8 +485,6 @@ const PartsManagement = () => {
                   {qrData.data.storageLocation || "Not specified"}
                 </div>
               </div>
-             
-              
             </div>
           </div>
         )}
@@ -516,7 +525,7 @@ const PartsManagement = () => {
     const qrData = {
       partNumber: item.PartNumber || item.partNumber || "",
       model: item.Model || item.model || "",
-     
+
       storageLocation: item.StorageLocation || item.storageLocation || "N/A",
     };
 
@@ -753,6 +762,208 @@ const PartsManagement = () => {
     return null;
   };
 
+  // PDF Styles
+  const pdfStyles = StyleSheet.create({
+    page: {
+      padding: 30,
+      fontSize: 10,
+      fontFamily: "Helvetica",
+    },
+    header: {
+      marginBottom: 20,
+      borderBottom: 2,
+      borderBottomColor: "#3b82f6",
+      paddingBottom: 10,
+    },
+    title: {
+      fontSize: 20,
+      fontWeight: "bold",
+      marginBottom: 5,
+      color: "#1f2937",
+    },
+    subtitle: {
+      fontSize: 10,
+      color: "#6b7280",
+      marginBottom: 3,
+    },
+    table: {
+      display: "table",
+      width: "auto",
+      marginTop: 10,
+    },
+    tableRow: {
+      flexDirection: "row",
+      borderBottomWidth: 1,
+      borderBottomColor: "#e5e7eb",
+      minHeight: 30,
+      alignItems: "center",
+    },
+    tableHeader: {
+      backgroundColor: "#3b82f6",
+      color: "#ffffff",
+      fontWeight: "bold",
+      paddingVertical: 8,
+    },
+    tableCell: {
+      padding: 8,
+      fontSize: 9,
+    },
+    footer: {
+      position: "absolute",
+      bottom: 30,
+      left: 30,
+      right: 30,
+      textAlign: "center",
+      color: "#6b7280",
+      fontSize: 8,
+      borderTop: 1,
+      borderTopColor: "#e5e7eb",
+      paddingTop: 10,
+    },
+  });
+
+  // PDF Document Component
+  const TablePDFDocument = ({ data, tableView, title }) => {
+    const getTableColumns = () => {
+      if (tableView === "parts") {
+        return [
+          { key: "PartNumber", label: "Part Number", width: "15%" },
+          { key: "Model", label: "Model", width: "20%" },
+          { key: "Prefix", label: "Prefix", width: "15%" },
+          { key: "SerialNo", label: "Serial Number", width: "15%" },
+          { key: "StorageLocation", label: "Storage", width: "15%" },
+          { key: "createdAt", label: "Created At", width: "20%" },
+        ];
+      } else if (tableView === "scans") {
+        return [
+          { key: "textContent", label: "Text Content", width: "40%" },
+          { key: "status", label: "Status", width: "30%" },
+          { key: "scannedAt", label: "Scanned At", width: "30%" },
+        ];
+      } else {
+        return [
+          { key: "content", label: "Content", width: "20%" },
+          { key: "type", label: "Type", width: "15%" },
+          { key: "labelSize", label: "Label Size", width: "15%" },
+          { key: "totalLabels", label: "Total Labels", width: "20%" },
+          { key: "printedAt", label: "Printed At", width: "30%" },
+        ];
+      }
+    };
+
+    const formatRowData = (item) => {
+      if (tableView === "parts") {
+        return {
+          PartNumber: item.PartNumber || "",
+          Model: item.Model || "",
+          Prefix: item.Prefix || "",
+          SerialNo: item.SerialNo || "",
+          StorageLocation: item.StorageLocation || "Not specified",
+          createdAt: new Date(item.createdAt).toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        };
+      } else if (tableView === "scans") {
+        return {
+          textContent: item.textContent || "",
+          status:
+            item.printed || item.status === "printed"
+              ? "Printed"
+              : "Processing",
+          scannedAt: new Date(item.scannedAt).toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        };
+      } else {
+        return {
+          content: item.textContent || item.partNumber || "",
+          type: item.textContent ? "Text" : "Part",
+          labelSize: `${item.labelSize}mm`,
+          totalLabels: `${item.totalLabels} labels`,
+          printedAt: new Date(item.printedAt).toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        };
+      }
+    };
+
+    const columns = getTableColumns();
+
+    return (
+      <Document>
+        <Page size="A4" style={pdfStyles.page} orientation="landscape">
+          {/* Header */}
+          <View style={pdfStyles.header}>
+            <Text style={pdfStyles.title}>
+              Parts Management System - {title}
+            </Text>
+            <Text style={pdfStyles.subtitle}>
+              Generated on {new Date().toLocaleString()}
+            </Text>
+            <Text style={pdfStyles.subtitle}>Total Records: {data.length}</Text>
+          </View>
+
+          {/* Table */}
+          <View style={pdfStyles.table}>
+            {/* Table Header */}
+            <View style={[pdfStyles.tableRow, pdfStyles.tableHeader]}>
+              {columns.map((col) => (
+                <View
+                  key={col.key}
+                  style={[pdfStyles.tableCell, { width: col.width }]}
+                >
+                  <Text>{col.label}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Table Rows */}
+            {data.map((item, index) => {
+              const rowData = formatRowData(item);
+              return (
+                <View
+                  key={item._id || item.id || index}
+                  style={[
+                    pdfStyles.tableRow,
+                    {
+                      backgroundColor: index % 2 === 0 ? "#ffffff" : "#f9fafb",
+                    },
+                  ]}
+                >
+                  {columns.map((col) => (
+                    <View
+                      key={col.key}
+                      style={[pdfStyles.tableCell, { width: col.width }]}
+                    >
+                      <Text>{rowData[col.key]}</Text>
+                    </View>
+                  ))}
+                </View>
+              );
+            })}
+          </View>
+
+          {/* Footer */}
+          <View style={pdfStyles.footer}>
+            <Text>Parts Management System Export - Generated by React PDF</Text>
+          </View>
+        </Page>
+      </Document>
+    );
+  };
+
   const getModelAndPrefix = (partNumber) => {
     if (!partNumber || !partNumber.trim()) {
       return { model: "", prefix: "" };
@@ -974,12 +1185,77 @@ const PartsManagement = () => {
     try {
       const textToPrint = scanInput.trim();
 
+      // First, print 2 labels immediately (70x15mm)
+      const qrSvg = generateQRCodeString(textToPrint, 256);
+
+      // Create 2 labels
+      const labels = [];
+      for (let i = 0; i < 2; i++) {
+        labels.push(`
+        <div class="print-label-70x15">
+          <div class="print-qr-70x15">
+            ${qrSvg}
+          </div>
+          <div class="print-text-70x15">${textToPrint}</div>
+        </div>
+      `);
+      }
+
+      const printContent = labels.join("");
+
+      // Open print window
+      const printWindow = window.open("", "_blank", "width=800,height=600");
+
+      if (!printWindow) {
+        throw new Error(
+          "Could not open print window. Please check popup blockers."
+        );
+      }
+
+      const htmlContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Label Print</title>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          ${getPrintStyles("70x15")}
+        </head>
+        <body>
+          <div class="print-container" style="display: block;">
+            ${printContent}
+          </div>
+          <script>
+            console.log('Print window loaded');
+            window.onload = function() {
+              console.log('Window loaded, preparing to print');
+              setTimeout(function() {
+                window.print();
+              }, 1000);
+            };
+            
+            window.onafterprint = function() {
+              console.log('Print dialog closed');
+              setTimeout(function() {
+                window.close();
+              }, 500);
+            };
+          </script>
+        </body>
+      </html>
+    `;
+
+      printWindow.document.write(htmlContent);
+      printWindow.document.close();
+      printWindow.focus();
+
+      // Now save to database
       const scanEntryData = {
         textContent: textToPrint,
         scannedAt: new Date().toISOString(),
-        printed: false,
+        printed: true,
         labelSize: "70x15",
-        status: "processing",
+        status: "printed",
       };
 
       const response = await api.post("/api/addScanEntry", scanEntryData);
@@ -988,56 +1264,195 @@ const PartsManagement = () => {
         const savedScanEntry = response.data.data;
         setScanHistory((prev) => [savedScanEntry, ...prev]);
 
-        setTimeout(async () => {
-          try {
-            await api.put(`/api/updateScanEntry/${savedScanEntry._id}`, {
-              printed: true,
-              status: "printed",
-            });
+        // Save to print history
+        const printJob = {
+          textContent: textToPrint,
+          quantity: 1,
+          totalLabels: 2,
+          labelSize: "70x15",
+          printedAt: new Date().toISOString(),
+          scanEntryId: savedScanEntry._id,
+        };
 
-            setScanHistory((prev) =>
-              prev.map((item) =>
-                item._id === savedScanEntry._id
-                  ? { ...item, printed: true, status: "printed" }
-                  : item
-              )
-            );
-
-            const printJob = {
-              textContent: textToPrint,
-              quantity: 1,
-              totalLabels: 2,
-              labelSize: "70x15",
-              printedAt: new Date().toISOString(),
-              scanEntryId: savedScanEntry._id,
-            };
-
-            const printResponse = await api.post("/api/addPrintJob", printJob);
-            if (printResponse.data.success) {
-              setPrintHistory((prev) => [
-                printResponse.data.data || printJob,
-                ...prev,
-              ]);
-            }
-          } catch (updateError) {
-            console.error("Error updating scan entry:", updateError);
-          }
-        }, 1000);
+        const printResponse = await api.post("/api/addPrintJob", printJob);
+        if (printResponse.data.success) {
+          setPrintHistory((prev) => [
+            printResponse.data.data || printJob,
+            ...prev,
+          ]);
+        }
 
         setSuccess(
-          `Text "${textToPrint}" scanned and will be printed (2 labels, 70x15mm)!`
+          `Text "${textToPrint}" printed successfully! 2 labels (70x15mm)`
         );
         setTimeout(() => setSuccess(""), 3000);
       } else {
         setError("Failed to save scan entry to database");
       }
     } catch (err) {
-      console.error("Error saving scan entry:", err);
-      setError("Failed to process and save scan entry");
+      console.error("Error processing scan entry:", err);
+      setError(`Failed to print: ${err.message}`);
     } finally {
       setScanLoading(false);
       setScannerOpen(false);
       setScanInput("");
+    }
+  };
+
+  const handleExport = async (format) => {
+    let data, filename;
+
+    if (tableView === "parts") {
+      data = filteredParts;
+      filename = "parts_database";
+    } else if (tableView === "scans") {
+      data = scanHistory;
+      filename = "scan_history";
+    } else {
+      data = printHistory;
+      filename = "print_history";
+    }
+
+    if (data.length === 0) {
+      setError("No data to export");
+      setTimeout(() => setError(""), 3000);
+      return;
+    }
+
+    // Export to CSV
+    const exportToCSV = (data, filename) => {
+      let csvContent = "";
+
+      if (tableView === "parts") {
+        csvContent =
+          "Part Number,Model,Prefix,Serial Number,Storage Location,Created At\n";
+        data.forEach((part) => {
+          csvContent += `"${part.PartNumber}","${part.Model}","${
+            part.Prefix
+          }","${part.SerialNo}","${
+            part.StorageLocation || "Not specified"
+          }","${new Date(part.createdAt).toLocaleString()}"\n`;
+        });
+      } else if (tableView === "scans") {
+        csvContent = "Text Content,Status,Scanned At\n";
+        data.forEach((scan) => {
+          const status =
+            scan.printed || scan.status === "printed"
+              ? "Printed"
+              : "Processing";
+          csvContent += `"${scan.textContent}","${status}","${new Date(
+            scan.scannedAt
+          ).toLocaleString()}"\n`;
+        });
+      } else if (tableView === "prints") {
+        csvContent = "Content,Type,Label Size,Total Labels,Printed At\n";
+        data.forEach((print) => {
+          const content = print.textContent || print.partNumber;
+          const type = print.textContent ? "Text" : "Part";
+          csvContent += `"${content}","${type}","${print.labelSize}mm","${
+            print.totalLabels
+          }","${new Date(print.printedAt).toLocaleString()}"\n`;
+        });
+      }
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `${filename}_${
+        new Date().toISOString().split("T")[0]
+      }.csv`;
+      link.click();
+      setSuccess(`Exported to CSV successfully!`);
+      setTimeout(() => setSuccess(""), 3000);
+    };
+
+    // Export to Excel
+    const exportToExcel = async (data, filename) => {
+      // You'll need to import XLSX if not already imported
+      // import * as XLSX from 'xlsx';
+
+      let worksheet;
+
+      if (tableView === "parts") {
+        const excelData = data.map((part) => ({
+          "Part Number": part.PartNumber,
+          Model: part.Model,
+          Prefix: part.Prefix,
+          "Serial Number": part.SerialNo,
+          "Storage Location": part.StorageLocation || "Not specified",
+          "Created At": new Date(part.createdAt).toLocaleString(),
+        }));
+        worksheet = XLSX.utils.json_to_sheet(excelData);
+      } else if (tableView === "scans") {
+        const excelData = data.map((scan) => ({
+          "Text Content": scan.textContent,
+          Status:
+            scan.printed || scan.status === "printed"
+              ? "Printed"
+              : "Processing",
+          "Scanned At": new Date(scan.scannedAt).toLocaleString(),
+        }));
+        worksheet = XLSX.utils.json_to_sheet(excelData);
+      } else if (tableView === "prints") {
+        const excelData = data.map((print) => ({
+          Content: print.textContent || print.partNumber,
+          Type: print.textContent ? "Text" : "Part",
+          "Label Size": `${print.labelSize}mm`,
+          "Total Labels": print.totalLabels,
+          "Printed At": new Date(print.printedAt).toLocaleString(),
+        }));
+        worksheet = XLSX.utils.json_to_sheet(excelData);
+      }
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Data");
+      XLSX.writeFile(
+        workbook,
+        `${filename}_${new Date().toISOString().split("T")[0]}.xlsx`
+      );
+      setSuccess(`Exported to Excel successfully!`);
+      setTimeout(() => setSuccess(""), 3000);
+    };
+
+    // Export to PDF using react-pdf
+    const exportToPDF = async (data, filename) => {
+      try {
+        const title = filename
+          .replace(/_/g, " ")
+          .replace(/\b\w/g, (l) => l.toUpperCase());
+
+        const blob = await pdf(
+          <TablePDFDocument data={data} tableView={tableView} title={title} />
+        ).toBlob();
+
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `${filename}_${
+          new Date().toISOString().split("T")[0]
+        }.pdf`;
+        link.click();
+
+        setSuccess(`Exported to PDF successfully!`);
+        setTimeout(() => setSuccess(""), 3000);
+      } catch (error) {
+        console.error("Error generating PDF:", error);
+        setError("Failed to generate PDF");
+        setTimeout(() => setError(""), 3000);
+      }
+    };
+
+    switch (format) {
+      case "csv":
+        exportToCSV(data, filename);
+        break;
+      case "excel":
+        exportToExcel(data, filename);
+        break;
+      case "pdf":
+        await exportToPDF(data, filename);
+        break;
+      default:
+        break;
     }
   };
 
@@ -1162,6 +1577,7 @@ const PartsManagement = () => {
           Model: model,
           Prefix: prefix,
           StorageLocation: storageLocation,
+          // Don't send SerialNo - let it be just the prefix + year + month
         });
 
         setParts((prev) =>
@@ -1183,6 +1599,7 @@ const PartsManagement = () => {
           Model: model,
           Prefix: prefix,
           StorageLocation: storageLocation,
+          // Don't send SerialNo at all
         });
 
         setParts((prev) => [response.data.data, ...prev]);
@@ -1190,7 +1607,7 @@ const PartsManagement = () => {
 
       if (response.data.success) {
         const serialNoInfo = response.data.data.SerialNo
-          ? ` (Serial No: ${response.data.data.SerialNo})`
+          ? ` (Serial Base: ${response.data.data.SerialNo})`
           : "";
         setSuccess(
           editIndex !== null
@@ -1546,8 +1963,32 @@ const PartsManagement = () => {
                           <span className="bg-blue-100 px-2 py-1 rounded font-mono">
                             {prefix}
                           </span>
-                          - Serial numbers will be auto-generated during
-                          save/print
+                        </p>
+                        <p className="text-blue-600 text-sm mt-2">
+                          Base Serial:{" "}
+                          <span className="font-mono font-bold">
+                            {prefix.includes("_")
+                              ? prefix.replace(
+                                  /_/g,
+                                  new Date()
+                                    .getFullYear()
+                                    .toString()
+                                    .slice(-2) +
+                                    (new Date().getMonth() + 1)
+                                      .toString()
+                                      .padStart(2, "0")
+                                )
+                              : `${prefix}${new Date()
+                                  .getFullYear()
+                                  .toString()
+                                  .slice(-2)}${(new Date().getMonth() + 1)
+                                  .toString()
+                                  .padStart(2, "0")}`}
+                          </span>
+                        </p>
+                        <p className="text-blue-500 text-xs mt-1">
+                          Individual serial numbers (001, 002, etc.) will be
+                          added during printing
                         </p>
                       </div>
                     </div>
@@ -1629,10 +2070,35 @@ const PartsManagement = () => {
                     <span>Filter</span>
                   </button>
 
-                  <button className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                    <Download className="h-4 w-4" />
-                    <span>Export</span>
-                  </button>
+                  <div className="relative group">
+                    <button className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+                      <Download className="h-4 w-4" />
+                      <span>Export</span>
+                    </button>
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-10">
+                      <button
+                        onClick={() => handleExport("csv")}
+                        className="w-full text-left px-4 py-2 hover:bg-gray-50 rounded-t-lg transition-colors flex items-center space-x-2"
+                      >
+                        <Download className="h-4 w-4" />
+                        <span>Export as CSV</span>
+                      </button>
+                      <button
+                        onClick={() => handleExport("excel")}
+                        className="w-full text-left px-4 py-2 hover:bg-gray-50 transition-colors flex items-center space-x-2"
+                      >
+                        <Download className="h-4 w-4" />
+                        <span>Export as Excel</span>
+                      </button>
+                      <button
+                        onClick={() => handleExport("pdf")}
+                        className="w-full text-left px-4 py-2 hover:bg-gray-50 rounded-b-lg transition-colors flex items-center space-x-2"
+                      >
+                        <Download className="h-4 w-4" />
+                        <span>Export as PDF</span>
+                      </button>
+                    </div>
+                  </div>
 
                   <div className="bg-blue-100 text-blue-800 px-3 py-2 rounded-lg font-medium text-sm">
                     {tableView === "parts"
@@ -1828,6 +2294,7 @@ const PartsManagement = () => {
                 </p>
               </div>
             ) : (
+              // Find the Print History table section and replace it with this:
               <table className="w-full">
                 <thead className="bg-gray-100/80">
                   <tr>
@@ -1836,6 +2303,9 @@ const PartsManagement = () => {
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Type
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Serial Numbers
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Label Size
@@ -1872,6 +2342,30 @@ const PartsManagement = () => {
                         >
                           {print.textContent ? "Text" : "Part"}
                         </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        {print.textContent ? (
+                          <span className="text-gray-400 italic text-sm">
+                            N/A
+                          </span>
+                        ) : (
+                          <div className="space-y-1">
+                            <div className="flex items-center space-x-2">
+                              <span className="text-xs text-gray-500">
+                                From:
+                              </span>
+                              <span className="bg-indigo-100 text-indigo-800 px-2 py-1 rounded font-mono text-xs font-bold">
+                                {print.startingSerialNo || "N/A"}
+                              </span>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <span className="text-xs text-gray-500">To:</span>
+                              <span className="bg-indigo-100 text-indigo-800 px-2 py-1 rounded font-mono text-xs font-bold ml-3">
+                                {print.endingSerialNo || "N/A"}
+                              </span>
+                            </div>
+                          </div>
+                        )}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-lg font-medium text-sm">
